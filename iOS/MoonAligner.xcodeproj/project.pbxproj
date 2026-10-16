@@ -1,0 +1,462 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2001 /* MoonAlignerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1001 /* MoonAlignerApp.swift */; };
+		2002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1002 /* ContentView.swift */; };
+		2003 /* ColorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1003 /* ColorTheme.swift */; };
+		2004 /* SunMoonTrackerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1004 /* SunMoonTrackerView.swift */; };
+		2005 /* ArTrackerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1005 /* ArTrackerView.swift */; };
+		2006 /* ShotPlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1006 /* ShotPlannerView.swift */; };
+		2007 /* CalculatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1007 /* CalculatorView.swift */; };
+		2008 /* MoonArtRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1008 /* MoonArtRenderer.swift */; };
+		2009 /* EphemerisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1009 /* EphemerisEngine.swift */; };
+		2010 /* MoonPhase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1010 /* MoonPhase.swift */; };
+		2011 /* CameraSensor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1011 /* CameraSensor.swift */; };
+		2012 /* OpticsCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1012 /* OpticsCalculator.swift */; };
+		2013 /* GeoPoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1013 /* GeoPoint.swift */; };
+		2014 /* AlignmentFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1014 /* AlignmentFinder.swift */; };
+		2015 /* ShadowSimulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1015 /* ShadowSimulator.swift */; };
+		2016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1016 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1000 /* MoonAligner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MoonAligner.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1001 /* MoonAlignerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoonAlignerApp.swift; sourceTree = "<group>"; };
+		1002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		1003 /* ColorTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTheme.swift; sourceTree = "<group>"; };
+		1004 /* SunMoonTrackerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SunMoonTrackerView.swift; sourceTree = "<group>"; };
+		1005 /* ArTrackerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArTrackerView.swift; sourceTree = "<group>"; };
+		1006 /* ShotPlannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotPlannerView.swift; sourceTree = "<group>"; };
+		1007 /* CalculatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalculatorView.swift; sourceTree = "<group>"; };
+		1008 /* MoonArtRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoonArtRenderer.swift; sourceTree = "<group>"; };
+		1009 /* EphemerisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EphemerisEngine.swift; sourceTree = "<group>"; };
+		1010 /* MoonPhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoonPhase.swift; sourceTree = "<group>"; };
+		1011 /* CameraSensor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSensor.swift; sourceTree = "<group>"; };
+		1012 /* OpticsCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpticsCalculator.swift; sourceTree = "<group>"; };
+		1013 /* GeoPoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoPoint.swift; sourceTree = "<group>"; };
+		1014 /* AlignmentFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlignmentFinder.swift; sourceTree = "<group>"; };
+		1015 /* ShadowSimulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShadowSimulator.swift; sourceTree = "<group>"; };
+		1016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0001 = {
+			isa = PBXGroup;
+			children = (
+				0002 /* MoonAligner */,
+				0003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		0002 /* MoonAligner */ = {
+			isa = PBXGroup;
+			children = (
+				0004 /* App */,
+				0005 /* UI */,
+				0006 /* Core */,
+				1016 /* Assets.xcassets */,
+				1017 /* Info.plist */,
+			);
+			path = MoonAligner;
+			sourceTree = "<group>";
+		};
+		0003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1000 /* MoonAligner.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		0004 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				1001 /* MoonAlignerApp.swift */,
+				1002 /* ContentView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		0005 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				0007 /* Theme */,
+				0008 /* Tracker */,
+				0009 /* AR */,
+				0010 /* Planner */,
+				0011 /* Calculator */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		0006 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				0012 /* Astronomy */,
+				0013 /* Optics */,
+				0014 /* Alignment */,
+				0015 /* Shadow */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		0007 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				1003 /* ColorTheme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		0008 /* Tracker */ = {
+			isa = PBXGroup;
+			children = (
+				1004 /* SunMoonTrackerView.swift */,
+			);
+			path = Tracker;
+			sourceTree = "<group>";
+		};
+		0009 /* AR */ = {
+			isa = PBXGroup;
+			children = (
+				1005 /* ArTrackerView.swift */,
+			);
+			path = AR;
+			sourceTree = "<group>";
+		};
+		0010 /* Planner */ = {
+			isa = PBXGroup;
+			children = (
+				1006 /* ShotPlannerView.swift */,
+			);
+			path = Planner;
+			sourceTree = "<group>";
+		};
+		0011 /* Calculator */ = {
+			isa = PBXGroup;
+			children = (
+				1007 /* CalculatorView.swift */,
+				1008 /* MoonArtRenderer.swift */,
+			);
+			path = Calculator;
+			sourceTree = "<group>";
+		};
+		0012 /* Astronomy */ = {
+			isa = PBXGroup;
+			children = (
+				1009 /* EphemerisEngine.swift */,
+				1010 /* MoonPhase.swift */,
+			);
+			path = Astronomy;
+			sourceTree = "<group>";
+		};
+		0013 /* Optics */ = {
+			isa = PBXGroup;
+			children = (
+				1011 /* CameraSensor.swift */,
+				1012 /* OpticsCalculator.swift */,
+			);
+			path = Optics;
+			sourceTree = "<group>";
+		};
+		0014 /* Alignment */ = {
+			isa = PBXGroup;
+			children = (
+				1013 /* GeoPoint.swift */,
+				1014 /* AlignmentFinder.swift */,
+			);
+			path = Alignment;
+			sourceTree = "<group>";
+		};
+		0015 /* Shadow */ = {
+			isa = PBXGroup;
+			children = (
+				1015 /* ShadowSimulator.swift */,
+			);
+			path = Shadow;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5001 /* MoonAligner */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6001 /* Build configuration list for PBXNativeTarget "MoonAligner" */;
+			buildPhases = (
+				3002 /* Sources */,
+				3001 /* Frameworks */,
+				3003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MoonAligner;
+			productName = MoonAligner;
+			productReference = 1000 /* MoonAligner.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0000 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					5001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 6000 /* Build configuration list for PBXProject "MoonAligner" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 0001;
+			productRefGroup = 0003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5001 /* MoonAligner */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2016 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2001 /* MoonAlignerApp.swift in Sources */,
+				2002 /* ContentView.swift in Sources */,
+				2003 /* ColorTheme.swift in Sources */,
+				2004 /* SunMoonTrackerView.swift in Sources */,
+				2005 /* ArTrackerView.swift in Sources */,
+				2006 /* ShotPlannerView.swift in Sources */,
+				2007 /* CalculatorView.swift in Sources */,
+				2008 /* MoonArtRenderer.swift in Sources */,
+				2009 /* EphemerisEngine.swift in Sources */,
+				2010 /* MoonPhase.swift in Sources */,
+				2011 /* CameraSensor.swift in Sources */,
+				2012 /* OpticsCalculator.swift in Sources */,
+				2013 /* GeoPoint.swift in Sources */,
+				2014 /* AlignmentFinder.swift in Sources */,
+				2015 /* ShadowSimulator.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		4001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDEFINED_VARIABLES = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		4002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDEFINED_VARIABLES = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		4003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MoonAligner/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MoonAligner;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.moonaligner.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MoonAligner/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MoonAligner;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.moonaligner.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6000 /* Build configuration list for PBXProject "MoonAligner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4001 /* Debug */,
+				4002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6001 /* Build configuration list for PBXNativeTarget "MoonAligner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4003 /* Debug */,
+				4004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 0000 /* Project object */;
+}

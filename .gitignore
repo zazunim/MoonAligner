@@ -1,0 +1,33 @@
+# Built application files
+*.apk
+*.aab
+*.zip
+*.tar.gz
+
+# Android / Gradle
+.gradle/
+build/
+app/build/
+*.iml
+.idea/
+.kotlin/
+local.properties
+.navigation/
+captures/
+output.json
+
+# iOS / Xcode
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+*.xcuserdatad/
+DerivedData/
+build/
+*.hmap
+*.ipa
+.DS_Store
+
+# OS / Editor
+Thumbs.db
+.vscode/
+*.swp
+*~
