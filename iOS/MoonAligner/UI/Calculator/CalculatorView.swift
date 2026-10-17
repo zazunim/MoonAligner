@@ -33,19 +33,11 @@ public struct CalculatorView: View {
     }
 
     private var sunriseString: String {
-        guard let rise = sunDayTimes.sunriseTime else { return "--:--" }
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        f.timeZone = EphemerisEngine.seoulCalendar.timeZone
-        return f.string(from: rise)
+        sunDayTimes.sunriseTimeStr
     }
 
     private var sunsetString: String {
-        guard let set = sunDayTimes.sunsetTime else { return "--:--" }
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        f.timeZone = EphemerisEngine.seoulCalendar.timeZone
-        return f.string(from: set)
+        sunDayTimes.sunsetTimeStr
     }
 
     public init(sharedState: PlannerSharedState) {
