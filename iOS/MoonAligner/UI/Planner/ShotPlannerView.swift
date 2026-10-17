@@ -26,6 +26,7 @@ public class PlannerSharedState: ObservableObject {
     @Published public var targetHeight: Double = PresetSpot.defaults[0].targetHeightMeters
 
     // 거리/화각 계산기 연동 상태
+    @Published public var celestialTarget: CelestialTargetType = .moon
     @Published public var selectedSubjectType: SubjectSilhouetteType = .lotteTop
     @Published public var subjectHeight: Float = Float(PresetSpot.defaults[0].targetHeightMeters)
     @Published public var scaleRatio: Float = 1.0

@@ -78,6 +78,11 @@ enum class AlignmentAnchorMode {
     CAMERA_FIXED  // 📷 카메라 고정 -> 🗼 피사체 위치 정렬
 }
 
+enum class CelestialTargetType(val displayName: String, val shortName: String) {
+    MOON("달 (Moon)", "달"),
+    SUN("태양 (Sun)", "태양")
+}
+
 /**
  * 거리/화각 탭(Calculator)과 정렬 플래너(ShotPlanner) 간 실시간 양방향 상태 공유 홀더
  */
@@ -89,6 +94,7 @@ class PlannerSharedState {
     var targetHeight by mutableDoubleStateOf(PRESET_SPOTS[0].targetHeightMeters)
 
     // 거리/화각 계산기 연동 상태
+    var celestialTarget by mutableStateOf(CelestialTargetType.MOON)
     var selectedSubjectType by mutableStateOf(SubjectSilhouetteType.LOTTE_TOP)
     var subjectHeight by mutableFloatStateOf(PRESET_SPOTS[0].targetHeightMeters.toFloat())
     var scaleRatio by mutableFloatStateOf(1.0f)

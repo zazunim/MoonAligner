@@ -1,13 +1,28 @@
 import SwiftUI
 
+public enum CelestialTargetType: String, CaseIterable, Identifiable {
+    case moon = "달 (Moon)"
+    case sun = "태양 (Sun)"
+
+    public var id: String { rawValue }
+    public var shortName: String {
+        switch self {
+        case .moon: return "달"
+        case .sun: return "태양"
+        }
+    }
+}
+
 public enum SubjectSilhouetteType: String, CaseIterable, Identifiable {
     case person = "인물 (사진작가)"
     case pagoda = "전통 누각 (정자)"
     case lotteTop = "롯데타워 (상단 첨탑)"
     case lotteFull = "롯데타워 (전체 555m)"
     case nSeoulTower = "N서울타워 (상단부)"
-    case airplane = "보름달 횡단 여객기"
+    case airplane = "여객기 (태양/달 횡단)"
     case bird = "비상하는 독수리"
+    case lighthouse = "해안 등대 (일출/일몰)"
+    case mountain = "산 정상 (봉우리 일출)"
     case apartment = "도심 아파트 옥상"
 
     public var id: String { rawValue }
@@ -22,6 +37,8 @@ public enum SubjectSilhouetteType: String, CaseIterable, Identifiable {
         case .nSeoulTower: return 35.0
         case .airplane: return 65.0
         case .bird: return 1.8
+        case .lighthouse: return 24.0
+        case .mountain: return 80.0
         case .apartment: return 40.0
         }
     }
@@ -37,8 +54,10 @@ public enum SubjectSilhouetteType: String, CaseIterable, Identifiable {
         case .lotteTop: return "올림픽공원/뚝섬/남한산성 출사 구도 (~4.9km)"
         case .lotteFull: return "건물 전체를 달 크기로 담는 원경 샷 (~61km)"
         case .nSeoulTower: return "노들섬/용산/반포 출사 구도 (~3.8km)"
-        case .airplane: return "달 정중앙을 관통하는 대형 제트 여객기"
+        case .airplane: return "태양 또는 달 정중앙을 관통하는 대형 제트 여객기"
         case .bird: return "날개를 활짝 편 맹금류의 실루엣 (~200m)"
+        case .lighthouse: return "수평선 오메가 일출·일몰과 등대 실루엣 (~2.6km)"
+        case .mountain: return "산 능선 너머로 솟아오르는 장엄한 일출 샷 (~8.8km)"
         case .apartment: return "옥상 안테나와 빌딩 스카이라인 (~4.4km)"
         }
     }
@@ -102,6 +121,64 @@ public enum MoonArtRenderer {
         context.stroke(Path(ellipseIn: moonRect), with: .color(Color(hex: 0x1A1508, alpha: 0.15)), lineWidth: radius * 0.04)
     }
 
+    /// SwiftUI Canvas 상에서 이글거리는 일출/일몰 태양(Solar Disc & Corona) 렌더링
+    public static func drawRealisticSun(
+        context: inout GraphicsContext,
+        center: CGPoint,
+        radius: CGFloat
+    ) {
+        guard radius > 2 else { return }
+
+        // 1. 태양 외곽 대기 산란광 (Atmospheric Sunset Haze)
+        let outerHazeRect = CGRect(x: center.x - radius * 2.2, y: center.y - radius * 2.2, width: radius * 4.4, height: radius * 4.4)
+        context.fill(
+            Path(ellipseIn: outerHazeRect),
+            with: .radialGradient(
+                Gradient(colors: [Color(hex: 0xFF5722, alpha: 0.35), Color(hex: 0xFF9800, alpha: 0.18), Color(hex: 0xFFC107, alpha: 0.05), .clear]),
+                center: center,
+                startRadius: radius * 0.7,
+                endRadius: radius * 2.2
+            )
+        )
+
+        // 2. 태양 코로나 광륜 (Solar Corona & Rim Fire)
+        let coronaRect = CGRect(x: center.x - radius * 1.35, y: center.y - radius * 1.35, width: radius * 2.7, height: radius * 2.7)
+        context.fill(
+            Path(ellipseIn: coronaRect),
+            with: .radialGradient(
+                Gradient(colors: [Color(hex: 0xFFEB3B, alpha: 0.75), Color(hex: 0xFF9800, alpha: 0.45), Color(hex: 0xF44336, alpha: 0.15), .clear]),
+                center: center,
+                startRadius: radius * 0.85,
+                endRadius: radius * 1.35
+            )
+        )
+
+        // 3. 태양 본체 구체 (Solar Disc - 눈부신 백열/황금빛 코어)
+        let sunRect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+        context.fill(
+            Path(ellipseIn: sunRect),
+            with: .radialGradient(
+                Gradient(colors: [
+                    Color(hex: 0xFFFFFF),          // 백열의 초고온 중심부
+                    Color(hex: 0xFFFDE7),          // 눈부신 백황색
+                    Color(hex: 0xFFEE58),          // 밝은 태양 황금색
+                    Color(hex: 0xFFA726),          // 일출/일몰 앰버 오렌지
+                    Color(hex: 0xF4511E)           // 가장자리 림 홍염
+                ]),
+                center: center,
+                startRadius: 0,
+                endRadius: radius
+            )
+        )
+
+        // 4. 태양 홍염 / 림 강조 (Rim Glow)
+        context.stroke(
+            Path(ellipseIn: sunRect),
+            with: .color(Color(hex: 0xFF7043, alpha: 0.55)),
+            lineWidth: max(1.5, radius * 0.05)
+        )
+    }
+
     /// 피사체 실루엣 그림자 렌더링
     public static func drawSubjectSilhouette(
         context: inout GraphicsContext,
@@ -128,6 +205,10 @@ public enum MoonArtRenderer {
             drawAirplane(context: &context, cx: center.x, centerY: baseAnchorY, size: totalHeight)
         case .bird:
             drawEagle(context: &context, cx: center.x, centerY: baseAnchorY, size: totalHeight)
+        case .lighthouse:
+            drawLighthouse(context: &context, cx: center.x, bottomY: baseAnchorY, h: totalHeight)
+        case .mountain:
+            drawMountainPeak(context: &context, cx: center.x, bottomY: baseAnchorY, h: totalHeight)
         case .apartment:
             drawApartment(context: &context, cx: center.x, bottomY: baseAnchorY, h: totalHeight)
         }
@@ -145,8 +226,14 @@ public enum MoonArtRenderer {
         tripod.addLine(to: CGPoint(x: cx + w * 0.45, y: bottomY))
         context.stroke(tripod, with: .color(silhouetteColor), lineWidth: h * 0.035)
 
+        // 카메라 바디 & 렌즈
+        let camRect = CGRect(x: cx + w * 0.08, y: topY + h * 0.38, width: w * 0.22, height: h * 0.09)
+        context.fill(Path(camRect), with: .color(silhouetteColor))
+        let lensRect = CGRect(x: cx + w * 0.28, y: topY + h * 0.39, width: w * 0.24, height: h * 0.07)
+        context.fill(Path(lensRect), with: .color(silhouetteColor))
+
         // 인물 머리
-        let headRect = CGRect(x: cx - w * 0.22, y: topY + h * 0.05, width: h * 0.15, height: h * 0.15)
+        let headRect = CGRect(x: cx - w * 0.22, y: topY + h * 0.1, width: w * 0.18, height: h * 0.13)
         context.fill(Path(ellipseIn: headRect), with: .color(silhouetteColor))
 
         // 인물 몸통
@@ -248,157 +335,127 @@ public enum MoonArtRenderer {
 
     private static func drawAirplane(context: inout GraphicsContext, cx: CGFloat, centerY: CGFloat, size: CGFloat) {
         let w = size * 1.15
-        let h = size * 0.85
+        let h = size * 0.65
 
-        // 1. 주 동체, 수직 꼬리날개, 수평 꼬리날개, 하단 주날개
-        var planePath = Path()
-        // 기수 (앞코)
-        planePath.move(to: CGPoint(x: cx + w * 0.5, y: centerY))
-        // 동체 상단
-        planePath.addQuadCurve(
-            to: CGPoint(x: cx - w * 0.25, y: centerY - h * 0.08),
-            control: CGPoint(x: cx + w * 0.2, y: centerY - h * 0.09)
-        )
-        // 수직 꼬리날개 (정밀 테이퍼)
-        planePath.addLine(to: CGPoint(x: cx - w * 0.45, y: centerY - h * 0.42))
-        planePath.addLine(to: CGPoint(x: cx - w * 0.40, y: centerY - h * 0.42))
-        planePath.addLine(to: CGPoint(x: cx - w * 0.32, y: centerY - h * 0.06))
-        // 후미
-        planePath.addLine(to: CGPoint(x: cx - w * 0.50, y: centerY))
-        // 수평 꼬리날개 아래쪽
-        planePath.addLine(to: CGPoint(x: cx - w * 0.35, y: centerY + h * 0.12))
-        planePath.addLine(to: CGPoint(x: cx - w * 0.28, y: centerY + h * 0.06))
-        // 후방 동체 하단
-        planePath.addLine(to: CGPoint(x: cx - w * 0.05, y: centerY + h * 0.08))
+        // 동체
+        let fuselage = CGRect(x: cx - w * 0.5, y: centerY - h * 0.12, width: w, height: h * 0.24)
+        context.fill(Path(roundedRect: fuselage, cornerRadius: h * 0.12), with: .color(silhouetteColor))
 
-        // 하단 주날개 (좌/하단 뷰포인트 후퇴익)
-        planePath.addLine(to: CGPoint(x: cx - w * 0.25, y: centerY + h * 0.45))
-        planePath.addLine(to: CGPoint(x: cx - w * 0.12, y: centerY + h * 0.45))
-        planePath.addLine(to: CGPoint(x: cx + w * 0.15, y: centerY + h * 0.08))
+        // 주날개
+        var wings = Path()
+        wings.move(to: CGPoint(x: cx - w * 0.08, y: centerY - h * 0.48))
+        wings.addLine(to: CGPoint(x: cx + w * 0.12, y: centerY - h * 0.48))
+        wings.addLine(to: CGPoint(x: cx - w * 0.02, y: centerY + h * 0.48))
+        wings.addLine(to: CGPoint(x: cx - w * 0.18, y: centerY + h * 0.48))
+        wings.closeSubpath()
+        context.fill(wings, with: .color(silhouetteColor))
 
-        // 기수 하단 곡선
-        planePath.addQuadCurve(
-            to: CGPoint(x: cx + w * 0.5, y: centerY),
-            control: CGPoint(x: cx + w * 0.38, y: centerY + h * 0.06)
-        )
-        planePath.closeSubpath()
-        context.fill(planePath, with: .color(silhouetteColor))
-
-        // 2. 반대편 상단 주날개 (상단으로 뻗어나가는 후퇴익)
-        var upperWing = Path()
-        upperWing.move(to: CGPoint(x: cx - w * 0.05, y: centerY - h * 0.08))
-        upperWing.addLine(to: CGPoint(x: cx - w * 0.20, y: centerY - h * 0.38))
-        upperWing.addLine(to: CGPoint(x: cx - w * 0.12, y: centerY - h * 0.38))
-        upperWing.addLine(to: CGPoint(x: cx + w * 0.15, y: centerY - h * 0.07))
-        upperWing.closeSubpath()
-        context.fill(upperWing, with: .color(silhouetteColor))
-
-        // 3. 제트 엔진 2기 (날개 하단 터보팬 엔진 실루엣)
-        let engine1Rect = CGRect(x: cx - w * 0.08, y: centerY + h * 0.22, width: w * 0.16, height: h * 0.07)
-        let engine2Rect = CGRect(x: cx - w * 0.05, y: centerY - h * 0.22, width: w * 0.14, height: h * 0.06)
-        context.fill(Path(roundedRect: engine1Rect, cornerRadius: 4), with: .color(silhouetteColor))
-        context.fill(Path(roundedRect: engine2Rect, cornerRadius: 4), with: .color(silhouetteColor))
+        // 꼬리날개
+        var tail = Path()
+        tail.move(to: CGPoint(x: cx - w * 0.42, y: centerY))
+        tail.addLine(to: CGPoint(x: cx - w * 0.48, y: centerY - h * 0.35))
+        tail.addLine(to: CGPoint(x: cx - w * 0.36, y: centerY - h * 0.35))
+        tail.addLine(to: CGPoint(x: cx - w * 0.28, y: centerY))
+        tail.closeSubpath()
+        context.fill(tail, with: .color(silhouetteColor))
     }
 
     private static func drawEagle(context: inout GraphicsContext, cx: CGFloat, centerY: CGFloat, size: CGFloat) {
-        let w = size * 1.35
+        let w = size * 1.3
         let h = size * 0.75
 
+        var wings = Path()
+        wings.move(to: CGPoint(x: cx, y: centerY + h * 0.15))
+        wings.addQuadCurve(to: CGPoint(x: cx - w * 0.5, y: centerY - h * 0.35), control: CGPoint(x: cx - w * 0.25, y: centerY - h * 0.45))
+        wings.addLine(to: CGPoint(x: cx - w * 0.42, y: centerY - h * 0.15))
+        wings.addLine(to: CGPoint(x: cx - w * 0.28, y: centerY - h * 0.05))
+        wings.addLine(to: CGPoint(x: cx, y: centerY + h * 0.15))
+        wings.addQuadCurve(to: CGPoint(x: cx + w * 0.5, y: centerY - h * 0.35), control: CGPoint(x: cx + w * 0.25, y: centerY - h * 0.45))
+        wings.addLine(to: CGPoint(x: cx + w * 0.42, y: centerY - h * 0.15))
+        wings.addLine(to: CGPoint(x: cx + w * 0.28, y: centerY - h * 0.05))
+        wings.closeSubpath()
+        context.fill(wings, with: .color(silhouetteColor))
+
+        let body = CGRect(x: cx - w * 0.06, y: centerY - h * 0.2, width: w * 0.12, height: h * 0.45)
+        context.fill(Path(ellipseIn: body), with: .color(silhouetteColor))
+    }
+
+    private static func drawLighthouse(context: inout GraphicsContext, cx: CGFloat, bottomY: CGFloat, h: CGFloat) {
+        let topY = bottomY - h
+        let w = h * 0.45
+
+        // 등대 기둥 타워 (위로 좁아지는 사다리꼴)
+        var tower = Path()
+        tower.move(to: CGPoint(x: cx - w * 0.22, y: topY + h * 0.25))
+        tower.addLine(to: CGPoint(x: cx + w * 0.22, y: topY + h * 0.25))
+        tower.addLine(to: CGPoint(x: cx + w * 0.36, y: bottomY))
+        tower.addLine(to: CGPoint(x: cx - w * 0.36, y: bottomY))
+        tower.closeSubpath()
+        context.fill(tower, with: .color(silhouetteColor))
+
+        // 등대 등명기실 (Lantern Room)
+        let lanternRect = CGRect(x: cx - w * 0.16, y: topY + h * 0.08, width: w * 0.32, height: h * 0.17)
+        context.fill(Path(roundedRect: lanternRect, cornerRadius: 2), with: .color(silhouetteColor))
+
+        // 등대 돔형 지붕 (Dome Roof)
+        var dome = Path()
+        dome.addArc(center: CGPoint(x: cx, y: topY + h * 0.08), radius: w * 0.16, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
+        dome.closeSubpath()
+        context.fill(dome, with: .color(silhouetteColor))
+
+        // 피뢰침
+        var finial = Path()
+        finial.move(to: CGPoint(x: cx, y: topY + h * 0.08 - w * 0.16))
+        finial.addLine(to: CGPoint(x: cx, y: topY))
+        context.stroke(finial, with: .color(silhouetteColor), lineWidth: max(1.5, h * 0.03))
+
+        // 난간 갤러리 플랫폼
+        let railingRect = CGRect(x: cx - w * 0.28, y: topY + h * 0.23, width: w * 0.56, height: h * 0.035)
+        context.fill(Path(railingRect), with: .color(silhouetteColor))
+
+        // 등대 불빛 슬릿 (Light Beam Slit)
+        let lightSlit = CGRect(x: cx - w * 0.09, y: topY + h * 0.12, width: w * 0.18, height: h * 0.08)
+        context.fill(Path(lightSlit), with: .color(Color(hex: 0xFFF9C4, alpha: 0.9)))
+    }
+
+    private static func drawMountainPeak(context: inout GraphicsContext, cx: CGFloat, bottomY: CGFloat, h: CGFloat) {
+        let topY = bottomY - h
+        let w = h * 2.2
+
         var path = Path()
-        // 머리 & 날카로운 갈고리 부리
-        path.move(to: CGPoint(x: cx, y: centerY - h * 0.32))
-        path.addLine(to: CGPoint(x: cx + w * 0.05, y: centerY - h * 0.27)) // 부리 끝
-        path.addLine(to: CGPoint(x: cx + w * 0.02, y: centerY - h * 0.22)) // 턱/목
-        path.addLine(to: CGPoint(x: cx + w * 0.06, y: centerY - h * 0.16)) // 우측 가슴
-
-        // 우측 날개 앞전 (위로 솟구치며 뻗어나가는 우아한 곡선)
-        path.addQuadCurve(
-            to: CGPoint(x: cx + w * 0.48, y: centerY - h * 0.24),
-            control: CGPoint(x: cx + w * 0.25, y: centerY - h * 0.28)
-        )
-
-        // 우측 날개 끝 칼깃 (Primary feathers - 4단 날개깃 톱니)
-        path.addLine(to: CGPoint(x: cx + w * 0.50, y: centerY - h * 0.18))
-        path.addLine(to: CGPoint(x: cx + w * 0.44, y: centerY - h * 0.15))
-        path.addLine(to: CGPoint(x: cx + w * 0.47, y: centerY - h * 0.09))
-        path.addLine(to: CGPoint(x: cx + w * 0.39, y: centerY - h * 0.06))
-        path.addLine(to: CGPoint(x: cx + w * 0.41, y: centerY - h * 0.01))
-        path.addLine(to: CGPoint(x: cx + w * 0.33, y: centerY + h * 0.01))
-        path.addLine(to: CGPoint(x: cx + w * 0.34, y: centerY + h * 0.06))
-        path.addLine(to: CGPoint(x: cx + w * 0.25, y: centerY + h * 0.04))
-
-        // 우측 날개 후전 곡선 및 몸통 연결
-        path.addQuadCurve(
-            to: CGPoint(x: cx + w * 0.05, y: centerY + h * 0.22),
-            control: CGPoint(x: cx + w * 0.12, y: centerY + h * 0.12)
-        )
-
-        // 부채꼴 꼬리깃 (활짝 펼친 형태)
-        path.addLine(to: CGPoint(x: cx + w * 0.13, y: centerY + h * 0.38))
-        path.addQuadCurve(
-            to: CGPoint(x: cx - w * 0.13, y: centerY + h * 0.38),
-            control: CGPoint(x: cx, y: centerY + h * 0.42)
-        )
-        path.addLine(to: CGPoint(x: cx - w * 0.05, y: centerY + h * 0.22))
-
-        // 좌측 날개 후전 곡선
-        path.addQuadCurve(
-            to: CGPoint(x: cx - w * 0.25, y: centerY + h * 0.04),
-            control: CGPoint(x: cx - w * 0.12, y: centerY + h * 0.12)
-        )
-
-        // 좌측 날개 끝 칼깃 (Primary feathers - 4단 대칭 날개깃)
-        path.addLine(to: CGPoint(x: cx - w * 0.34, y: centerY + h * 0.06))
-        path.addLine(to: CGPoint(x: cx - w * 0.33, y: centerY + h * 0.01))
-        path.addLine(to: CGPoint(x: cx - w * 0.41, y: centerY - h * 0.01))
-        path.addLine(to: CGPoint(x: cx - w * 0.39, y: centerY - h * 0.06))
-        path.addLine(to: CGPoint(x: cx - w * 0.47, y: centerY - h * 0.09))
-        path.addLine(to: CGPoint(x: cx - w * 0.44, y: centerY - h * 0.15))
-        path.addLine(to: CGPoint(x: cx - w * 0.50, y: centerY - h * 0.18))
-        path.addLine(to: CGPoint(x: cx - w * 0.48, y: centerY - h * 0.24))
-
-        // 좌측 날개 앞전 곡선 (머리/목 쪽으로 복귀)
-        path.addQuadCurve(
-            to: CGPoint(x: cx - w * 0.06, y: centerY - h * 0.16),
-            control: CGPoint(x: cx - w * 0.25, y: centerY - h * 0.28)
-        )
-        path.addLine(to: CGPoint(x: cx - w * 0.02, y: centerY - h * 0.22))
+        path.move(to: CGPoint(x: cx - w * 0.5, y: bottomY))
+        path.addLine(to: CGPoint(x: cx - w * 0.28, y: topY + h * 0.38))
+        path.addLine(to: CGPoint(x: cx - w * 0.15, y: topY + h * 0.22))
+        path.addLine(to: CGPoint(x: cx, y: topY)) // 주봉우리 정상
+        path.addLine(to: CGPoint(x: cx + w * 0.12, y: topY + h * 0.18))
+        path.addLine(to: CGPoint(x: cx + w * 0.32, y: topY + h * 0.45))
+        path.addLine(to: CGPoint(x: cx + w * 0.5, y: bottomY))
         path.closeSubpath()
-
         context.fill(path, with: .color(silhouetteColor))
+
+        // 정상 소나무/정상석 실루엣
+        var monument = Path()
+        monument.move(to: CGPoint(x: cx, y: topY))
+        monument.addLine(to: CGPoint(x: cx, y: topY - h * 0.08))
+        context.stroke(monument, with: .color(silhouetteColor), lineWidth: max(1.5, h * 0.025))
     }
 
     private static func drawApartment(context: inout GraphicsContext, cx: CGFloat, bottomY: CGFloat, h: CGFloat) {
-        let w = h * 0.65
+        let w = h * 1.1
         let topY = bottomY - h
 
-        var path = Path()
-        path.move(to: CGPoint(x: cx - w * 0.45, y: bottomY))
-        path.addLine(to: CGPoint(x: cx - w * 0.45, y: topY + h * 0.12))
-        path.addLine(to: CGPoint(x: cx - w * 0.32, y: topY + h * 0.12))
-        // 옥상 계단실 및 헬리패드
-        path.addLine(to: CGPoint(x: cx - w * 0.32, y: topY + h * 0.04))
-        path.addLine(to: CGPoint(x: cx + w * 0.15, y: topY + h * 0.04))
-        // 옥상 통신 안테나
-        path.addLine(to: CGPoint(x: cx + w * 0.15, y: topY))
-        path.addLine(to: CGPoint(x: cx + w * 0.17, y: topY))
-        path.addLine(to: CGPoint(x: cx + w * 0.17, y: topY + h * 0.04))
-        path.addLine(to: CGPoint(x: cx + w * 0.32, y: topY + h * 0.04))
-        path.addLine(to: CGPoint(x: cx + w * 0.32, y: topY + h * 0.12))
-        path.addLine(to: CGPoint(x: cx + w * 0.45, y: topY + h * 0.12))
-        path.addLine(to: CGPoint(x: cx + w * 0.45, y: bottomY))
-        path.closeSubpath()
+        let building = CGRect(x: cx - w * 0.4, y: topY + h * 0.2, width: w * 0.8, height: h * 0.8)
+        context.fill(Path(building), with: .color(silhouetteColor))
 
-        context.fill(path, with: .color(silhouetteColor))
+        let tank = CGRect(x: cx - w * 0.25, y: topY + h * 0.05, width: w * 0.22, height: h * 0.15)
+        context.fill(Path(tank), with: .color(silhouetteColor))
 
-        // 불 켜진 창문 감성 포인트
-        let winW = w * 0.06
-        let winH = h * 0.04
-        let winColor = Color(hex: 0xFDE047).opacity(0.85)
-        context.fill(Path(CGRect(x: cx - w * 0.3, y: topY + h * 0.25, width: winW, height: winH)), with: .color(winColor))
-        context.fill(Path(CGRect(x: cx - w * 0.1, y: topY + h * 0.35, width: winW, height: winH)), with: .color(winColor))
-        context.fill(Path(CGRect(x: cx + w * 0.18, y: topY + h * 0.28, width: winW, height: winH)), with: .color(winColor))
-        context.fill(Path(CGRect(x: cx - w * 0.25, y: topY + h * 0.52, width: winW, height: winH)), with: .color(winColor))
-        context.fill(Path(CGRect(x: cx + w * 0.22, y: topY + h * 0.62, width: winW, height: winH)), with: .color(winColor))
+        var antenna = Path()
+        antenna.move(to: CGPoint(x: cx + w * 0.15, y: topY + h * 0.2))
+        antenna.addLine(to: CGPoint(x: cx + w * 0.15, y: topY))
+        antenna.addLine(to: CGPoint(x: cx + w * 0.05, y: topY + h * 0.06))
+        antenna.move(to: CGPoint(x: cx + w * 0.15, y: topY + h * 0.04))
+        antenna.addLine(to: CGPoint(x: cx + w * 0.25, y: topY + h * 0.1))
+        context.stroke(antenna, with: .color(silhouetteColor), lineWidth: h * 0.035)
     }
 }

@@ -10,6 +10,7 @@ val MoonGlow = Color(0xFFFFF3D1)
 val MoonSurface = Color(0xFFE8D5A3)
 val SunGold = Color(0xFFFFB300)
 val AccentOrange = Color(0xFFFF7043)
+val AccentBlue = Color(0xFF38BDF8)
 
 val TextPrimary = Color(0xFFF0F4F8)
 val TextSecondary = Color(0xFF94A3B8)

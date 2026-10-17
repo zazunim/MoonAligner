@@ -23,8 +23,10 @@ enum class SubjectSilhouetteType(
     LOTTE_TOP("롯데타워 (상단 첨탑)", 45.0f, false, "올림픽공원/뚝섬/남한산성 출사 구도 (~4.9km)"),
     LOTTE_FULL("롯데타워 (전체 555m)", 555.0f, false, "건물 전체를 달 크기로 압축하는 원경 샷 (~61km)"),
     N_SEOUL_TOWER("N서울타워 (상단부)", 35.0f, false, "노들섬/용산/반포 출사 구도 (~3.8km)"),
-    AIRPLANE("보름달 횡단 여객기", 65.0f, true, "달 정중앙을 관통하는 대형 제트 여객기"),
+    AIRPLANE("여객기 (태양/달 횡단)", 65.0f, true, "태양 또는 달 정중앙을 관통하는 대형 제트 여객기"),
     BIRD("비상하는 독수리", 1.8f, true, "날개를 활짝 편 맹금류의 실루엣 (~200m)"),
+    LIGHTHOUSE("해안 등대 (일출/일몰)", 24.0f, false, "수평선 오메가 일출·일몰과 등대 실루엣 (~2.6km)"),
+    MOUNTAIN("산 정상 (봉우리 일출)", 80.0f, false, "산 능선 너머로 솟아오르는 장엄한 일출 샷 (~8.8km)"),
     APARTMENT("도심 아파트 옥상", 40.0f, false, "옥상 안테나와 빌딩 실루엣 (~4.4km)")
 }
 
@@ -169,6 +171,76 @@ object MoonArtRenderer {
     }
 
     /**
+     * 일출/일몰 오메가 선셋 및 다이아몬드 타워를 위한 태양(Solar Disc & Corona) 렌더링
+     */
+    fun drawRealisticSun(
+        drawScope: DrawScope,
+        center: Offset,
+        radius: Float
+    ) {
+        if (radius <= 2f) return
+
+        with(drawScope) {
+            // 1. 태양 외곽 대기 산란광 (Atmospheric Sunset Haze)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0x60FF5722),
+                        Color(0x35FF9800),
+                        Color(0x10FFC107),
+                        Color(0x00000000)
+                    ),
+                    center = center,
+                    radius = radius * 2.2f
+                ),
+                radius = radius * 2.2f,
+                center = center
+            )
+
+            // 2. 태양 코로나 광륜 (Solar Corona & Rim Fire)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xC0FFEB3B),
+                        Color(0x75FF9800),
+                        Color(0x28F44336),
+                        Color(0x00000000)
+                    ),
+                    center = center,
+                    radius = radius * 1.35f
+                ),
+                radius = radius * 1.35f,
+                center = center
+            )
+
+            // 3. 태양 본체 구체 (눈부신 백열/황금빛 코어)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFFFFFFFF), // 백열 중심부
+                        Color(0xFFFFFDE7),
+                        Color(0xFFFFEE58),
+                        Color(0xFFFFA726),
+                        Color(0xFFF4511E)  // 림 홍염
+                    ),
+                    center = center,
+                    radius = radius
+                ),
+                radius = radius,
+                center = center
+            )
+
+            // 4. 태양 홍염 테두리 (Rim Glow)
+            drawCircle(
+                color = Color(0x90FF7043),
+                radius = radius,
+                center = center,
+                style = Stroke(width = maxOf(1.5f, radius * 0.05f))
+            )
+        }
+    }
+
+    /**
      * 선택된 피사체 종류에 따른 정밀 실루엣(그림자 아트) 렌더링
      */
     fun drawSubjectSilhouette(
@@ -209,6 +281,12 @@ object MoonArtRenderer {
                 }
                 SubjectSilhouetteType.BIRD -> {
                     drawSoaringEagle(center.x, baseAnchorY, totalHeight)
+                }
+                SubjectSilhouetteType.LIGHTHOUSE -> {
+                    drawLighthouse(center.x, baseAnchorY, totalHeight)
+                }
+                SubjectSilhouetteType.MOUNTAIN -> {
+                    drawMountainPeak(center.x, baseAnchorY, totalHeight)
                 }
                 SubjectSilhouetteType.APARTMENT -> {
                     drawApartmentBuilding(center.x, baseAnchorY, totalHeight)
@@ -542,5 +620,85 @@ object MoonArtRenderer {
         drawRect(windowColor, topLeft = Offset(cx + w * 0.18f, topY + h * 0.28f), size = Size(winW, winH))
         drawRect(windowColor, topLeft = Offset(cx - w * 0.25f, topY + h * 0.52f), size = Size(winW, winH))
         drawRect(windowColor, topLeft = Offset(cx + w * 0.22f, topY + h * 0.62f), size = Size(winW, winH))
+    }
+
+    // --- 8. 해안 등대 (일출/일몰 오메가 선셋 실루엣) ---
+    private fun DrawScope.drawLighthouse(cx: Float, bottomY: Float, h: Float) {
+        val topY = bottomY - h
+        val w = h * 0.45f
+
+        // 등대 기둥 타워 (사다리꼴)
+        val tower = Path().apply {
+            moveTo(cx - w * 0.22f, topY + h * 0.25f)
+            lineTo(cx + w * 0.22f, topY + h * 0.25f)
+            lineTo(cx + w * 0.36f, bottomY)
+            lineTo(cx - w * 0.36f, bottomY)
+            close()
+        }
+        drawPath(tower, SilhouetteColor)
+
+        // 등명기실
+        drawRoundRect(
+            color = SilhouetteColor,
+            topLeft = Offset(cx - w * 0.16f, topY + h * 0.08f),
+            size = Size(w * 0.32f, h * 0.17f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f)
+        )
+
+        // 돔형 지붕
+        val dome = Path().apply {
+            moveTo(cx - w * 0.16f, topY + h * 0.08f)
+            quadraticTo(cx, topY - h * 0.02f, cx + w * 0.16f, topY + h * 0.08f)
+            close()
+        }
+        drawPath(dome, SilhouetteColor)
+
+        // 피뢰침
+        drawLine(
+            color = SilhouetteColor,
+            start = Offset(cx, topY - h * 0.02f),
+            end = Offset(cx, topY - h * 0.06f),
+            strokeWidth = maxOf(2f, h * 0.03f)
+        )
+
+        // 난간 플랫폼
+        drawRect(
+            color = SilhouetteColor,
+            topLeft = Offset(cx - w * 0.28f, topY + h * 0.23f),
+            size = Size(w * 0.56f, h * 0.035f)
+        )
+
+        // 등대 발광창 (노란빛)
+        drawRect(
+            color = Color(0xFFFFF9C4),
+            topLeft = Offset(cx - w * 0.09f, topY + h * 0.12f),
+            size = Size(w * 0.18f, h * 0.08f)
+        )
+    }
+
+    // --- 9. 산 정상 (봉우리 능선 일출 실루엣) ---
+    private fun DrawScope.drawMountainPeak(cx: Float, bottomY: Float, h: Float) {
+        val topY = bottomY - h
+        val w = h * 2.2f
+
+        val path = Path().apply {
+            moveTo(cx - w * 0.5f, bottomY)
+            lineTo(cx - w * 0.28f, topY + h * 0.38f)
+            lineTo(cx - w * 0.15f, topY + h * 0.22f)
+            lineTo(cx, topY)
+            lineTo(cx + w * 0.12f, topY + h * 0.18f)
+            lineTo(cx + w * 0.32f, topY + h * 0.45f)
+            lineTo(cx + w * 0.5f, bottomY)
+            close()
+        }
+        drawPath(path, SilhouetteColor)
+
+        // 정상석/소나무
+        drawLine(
+            color = SilhouetteColor,
+            start = Offset(cx, topY),
+            end = Offset(cx, topY - h * 0.08f),
+            strokeWidth = maxOf(2f, h * 0.025f)
+        )
     }
 }

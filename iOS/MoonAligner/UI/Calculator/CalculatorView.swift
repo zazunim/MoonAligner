@@ -24,6 +24,30 @@ public struct CalculatorView: View {
         }
     }
 
+    private var sunDayTimes: SunDayTimes {
+        EphemerisEngine.calculateSunDayTimes(
+            date: Date(),
+            latitudeDeg: sharedState.cameraPoint.latitudeDeg,
+            longitudeDeg: sharedState.cameraPoint.longitudeDeg
+        )
+    }
+
+    private var sunriseString: String {
+        guard let rise = sunDayTimes.sunriseTime else { return "--:--" }
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        f.timeZone = EphemerisEngine.seoulCalendar.timeZone
+        return f.string(from: rise)
+    }
+
+    private var sunsetString: String {
+        guard let set = sunDayTimes.sunsetTime else { return "--:--" }
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        f.timeZone = EphemerisEngine.seoulCalendar.timeZone
+        return f.string(from: set)
+    }
+
     public init(sharedState: PlannerSharedState) {
         self.sharedState = sharedState
     }
@@ -33,12 +57,76 @@ public struct CalculatorView: View {
             VStack(alignment: .leading, spacing: 14) {
                 // 상단 타이틀
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("화각 압축 계산기")
+                    Text(sharedState.celestialTarget == .sun ? "태양 화각 압축 계산기" : "화각 압축 계산기")
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(.textPrimary)
-                    Text("달-피사체 크기 비율 및 최적 촬영 거리")
+                    Text(sharedState.celestialTarget == .sun ? "일출·일몰 오메가 선셋 & 다이아몬드 타워 최적 거리" : "달-피사체 크기 비율 및 최적 촬영 거리")
                         .font(.system(size: 12))
                         .foregroundColor(.textSecondary)
+                }
+
+                // 🌕 달 / ☀️ 태양 계산기 모드 전환 탭
+                HStack(spacing: 0) {
+                    ForEach(CelestialTargetType.allCases) { target in
+                        let isSelected = sharedState.celestialTarget == target
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                sharedState.celestialTarget = target
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Text(target == .moon ? "🌕" : "☀️")
+                                Text(target == .moon ? "달 계산기" : "태양 계산기 (일출·일몰)")
+                                    .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(isSelected ? (target == .moon ? Color.sunGold : Color(hex: 0xFF7043)) : Color.cardBackground)
+                            .foregroundColor(isSelected ? (target == .moon ? Color.nightSky : Color.white) : Color.textSecondary)
+                            .cornerRadius(10)
+                        }
+                    }
+                }
+                .padding(3)
+                .background(Color.surfaceDark)
+                .cornerRadius(12)
+
+                // 태양 모드 시 일출 & 일몰 골든타임 정보 칩
+                if sharedState.celestialTarget == .sun {
+                    HStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Text("🌅 일출")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(hex: 0xFDBA74))
+                            Text(sunriseString)
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color(hex: 0xEA580C).opacity(0.2))
+                        .cornerRadius(8)
+
+                        HStack(spacing: 4) {
+                            Text("🌇 일몰")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(hex: 0xFCA5A5))
+                            Text(sunsetString)
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color(hex: 0xDC2626).opacity(0.2))
+                        .cornerRadius(8)
+
+                        Spacer()
+
+                        Text("매직아워 ±30분")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(Color.sunGold)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 // 1. 피사체 선택
@@ -55,8 +143,8 @@ public struct CalculatorView: View {
                                     .font(.system(size: 11.5, weight: isSelected ? .bold : .medium))
                                     .padding(.horizontal, 11)
                                     .padding(.vertical, 6)
-                                    .background(isSelected ? Color.sunGold : Color.cardBackground)
-                                    .foregroundColor(isSelected ? Color.nightSky : Color.textPrimary)
+                                    .background(isSelected ? (sharedState.celestialTarget == .sun ? Color(hex: 0xFF7043) : Color.sunGold) : Color.cardBackground)
+                                    .foregroundColor(isSelected ? Color.white : Color.textPrimary)
                                     .cornerRadius(14)
                             }
                         }
@@ -76,7 +164,23 @@ public struct CalculatorView: View {
 
                 ZStack {
                     RoundedRectangle(cornerRadius: 14)
-                        .fill(Color(hex: 0x06090F))
+                        .fill(
+                            sharedState.celestialTarget == .sun
+                                ? AnyShapeStyle(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(hex: 0x181124),
+                                            Color(hex: 0x3E1838),
+                                            Color(hex: 0x822637),
+                                            Color(hex: 0xC84B25),
+                                            Color(hex: 0xF59E0B)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                                : AnyShapeStyle(Color(hex: 0x06090F))
+                        )
                         .aspectRatio(16.0 / 9.0, contentMode: .fit)
                         .overlay(
                             RoundedRectangle(cornerRadius: 14)
@@ -99,21 +203,30 @@ public struct CalculatorView: View {
                             p.addLine(to: CGPoint(x: size.width, y: size.height * 2.0 / 3.0))
                         }, with: .color(gridColor), lineWidth: 1)
 
-                        let moonRadius = max(15.0, size.height * CGFloat(moonFrameFraction) / 2.0)
+                        let celestialRadius = max(15.0, size.height * CGFloat(moonFrameFraction) / 2.0)
 
-                        // (A) 리얼 보름달 아트
-                        MoonArtRenderer.drawRealisticFullMoon(
-                            context: &context,
-                            center: center,
-                            radius: moonRadius
-                        )
+                        if sharedState.celestialTarget == .sun {
+                            // (A) 리얼 일출/일몰 태양 아트
+                            MoonArtRenderer.drawRealisticSun(
+                                context: &context,
+                                center: center,
+                                radius: celestialRadius
+                            )
+                        } else {
+                            // (A) 리얼 보름달 아트
+                            MoonArtRenderer.drawRealisticFullMoon(
+                                context: &context,
+                                center: center,
+                                radius: celestialRadius
+                            )
+                        }
 
                         // (B) 피사체 실루엣 아트
                         MoonArtRenderer.drawSubjectSilhouette(
                             context: &context,
                             type: sharedState.selectedSubjectType,
                             center: center,
-                            moonRadius: moonRadius,
+                            moonRadius: celestialRadius,
                             scaleRatio: CGFloat(sharedState.scaleRatio)
                         )
 
@@ -134,13 +247,13 @@ public struct CalculatorView: View {
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.8))
                             Spacer()
-                            Text("달 화각: \(Int((moonFrameFraction * 100.0).rounded()))%")
+                            Text(sharedState.celestialTarget == .sun ? "태양 화각: \(Int((moonFrameFraction * 100.0).rounded()))%" : "달 화각: \(Int((moonFrameFraction * 100.0).rounded()))%")
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(.sunGold)
+                                .foregroundColor(sharedState.celestialTarget == .sun ? Color(hex: 0xFDBA74) : .sunGold)
                         }
                         Spacer()
                         HStack {
-                            Text("ISO 100  1/250s  f/11")
+                            Text(sharedState.celestialTarget == .sun ? "ISO 100  1/1000s  f/8" : "ISO 100  1/250s  f/11")
                                 .font(.system(size: 9, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.6))
                             Spacer()
@@ -199,7 +312,7 @@ public struct CalculatorView: View {
                             .cornerRadius(8)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(sharedState.anchorMode == .targetFixed ? Color.sunGold : Color.clear, lineWidth: 1.2)
+                                    .stroke(sharedState.anchorMode == .targetFixed ? Color.accentBlue : Color.clear, lineWidth: 1)
                             )
                         }
 
@@ -215,35 +328,31 @@ public struct CalculatorView: View {
                             .font(.system(size: 11.5, weight: .bold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
-                            .background(sharedState.anchorMode == .cameraFixed ? Color(hex: 0xE11D48) : Color.surfaceDark)
-                            .foregroundColor(.white)
+                            .background(sharedState.anchorMode == .cameraFixed ? Color.sunGold : Color.surfaceDark)
+                            .foregroundColor(sharedState.anchorMode == .cameraFixed ? Color.nightSky : Color.white)
                             .cornerRadius(8)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(sharedState.anchorMode == .cameraFixed ? Color.sunGold : Color.clear, lineWidth: 1.2)
+                                    .stroke(sharedState.anchorMode == .cameraFixed ? Color.sunGold : Color.clear, lineWidth: 1)
                             )
                         }
                     }
 
+                    // 지도에서 위치 찾기 원탭 버튼
                     Button(action: {
                         sharedState.alignToCalculatorDistance()
-                        let focusPt = sharedState.anchorMode == .targetFixed ? sharedState.cameraPoint : sharedState.targetPoint
-                        sharedState.centerTrigger = CLLocationCoordinate2D(
-                            latitude: focusPt.latitudeDeg,
-                            longitude: focusPt.longitudeDeg
-                        )
                         sharedState.selectedTab = 0
                     }) {
                         HStack(spacing: 6) {
                             Image(systemName: "map.fill")
-                            Text("지도에서 위치 확인 ➔")
-                                .font(.system(size: 12.5, weight: .bold))
+                            Text("지도에서 위치 확인 →")
                         }
+                        .font(.system(size: 13, weight: .bold))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background(Color.sunGold)
-                        .foregroundColor(.nightSky)
-                        .cornerRadius(8)
+                        .padding(.vertical, 10)
+                        .background(sharedState.celestialTarget == .sun ? Color(hex: 0xFF7043) : Color.sunGold)
+                        .foregroundColor(sharedState.celestialTarget == .sun ? Color.white : Color.nightSky)
+                        .cornerRadius(10)
                     }
                 }
                 .padding(14)
@@ -273,20 +382,21 @@ public struct CalculatorView: View {
                             ),
                             in: 1.0...600.0
                         )
-                        .tint(.sunGold)
+                        .tint(sharedState.celestialTarget == .sun ? Color(hex: 0xFF7043) : .sunGold)
                     }
 
-                    // (B) 달 대비 크기 비율
+                    // (B) 달/태양 대비 크기 비율
                     VStack(alignment: .leading, spacing: 3) {
                         HStack {
-                            Text("달 대비 크기")
+                            Text(sharedState.celestialTarget == .sun ? "태양 대비 크기" : "달 대비 크기")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.textSecondary)
                             Spacer()
-                            let matchText = sharedState.scaleRatio < 0.85 ? "달이 큼" : (sharedState.scaleRatio > 1.15 ? "피사체가 큼" : "1:1 일치")
+                            let targetName = sharedState.celestialTarget == .sun ? "태양" : "달"
+                            let matchText = sharedState.scaleRatio < 0.85 ? "\(targetName)이 큼" : (sharedState.scaleRatio > 1.15 ? "피사체가 큼" : "1:1 일치")
                             Text("\(String(format: "%.2f", sharedState.scaleRatio))x (\(matchText))")
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
-                                .foregroundColor(.sunGold)
+                                .foregroundColor(sharedState.celestialTarget == .sun ? Color(hex: 0xFDBA74) : .sunGold)
                         }
                         Slider(
                             value: Binding(
@@ -298,7 +408,7 @@ public struct CalculatorView: View {
                             ),
                             in: 0.2...2.5
                         )
-                        .tint(.sunGold)
+                        .tint(sharedState.celestialTarget == .sun ? Color(hex: 0xFF7043) : .sunGold)
                     }
 
                     // (C) 초점거리
@@ -323,8 +433,8 @@ public struct CalculatorView: View {
                                         .font(.system(size: 11, weight: isSelected ? .bold : .medium))
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 4)
-                                        .background(isSelected ? Color.sunGold : Color.cardBackground)
-                                        .foregroundColor(isSelected ? Color.nightSky : Color.textPrimary)
+                                        .background(isSelected ? (sharedState.celestialTarget == .sun ? Color(hex: 0xFF7043) : Color.sunGold) : Color.cardBackground)
+                                        .foregroundColor(isSelected ? Color.white : Color.textPrimary)
                                         .cornerRadius(6)
                                 }
                             }
@@ -334,7 +444,7 @@ public struct CalculatorView: View {
 
                 // 5. 광학 공식 컴팩트 칩
                 HStack {
-                    Text("D = H × 110.5 (달 각지름 0.52° 기준)")
+                    Text(sharedState.celestialTarget == .sun ? "D = H × 110.5 (태양 각지름 0.53° 기준)" : "D = H × 110.5 (달 각지름 0.52° 기준)")
                         .font(.system(size: 10.5, weight: .medium, design: .monospaced))
                         .foregroundColor(.textSecondary.opacity(0.8))
                     Spacer()
