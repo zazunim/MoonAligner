@@ -466,21 +466,24 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
         selectedMarkerMessage = "🎯 3점 1열 카메라 정렬 완료! [📷카메라 ➔ 🗼피사체 ➔ $name]"
     }
 
-    val alignTimeToMoon: () -> Unit = {
+    val alignTimeToCelestialTarget: () -> Unit = {
+        val isSun = sharedState.celestialTarget == CelestialTargetType.SUN
         val match = AlignmentFinder.findNextAzimuthAlignment(
             camera = cameraPoint,
             target = targetPoint,
-            startInstant = selectedInstant
+            startInstant = selectedInstant,
+            isSun = isSun
         )
+        val targetName = if (isSun) "☀️태양" else "🌕달"
         if (match != null) {
             val zdt = match.timestamp.atZone(seoulZone)
             today = zdt.toLocalDate()
             val lt = zdt.toLocalTime()
             selectedHourFloat = lt.hour + lt.minute / 60f + lt.second / 3600f
             isLiveSync = false
-            selectedMarkerMessage = "🎯 3점 1열 정렬 시각으로 이동! (각도차 ${String.format("%.2f", match.offsetDeg)}°)"
+            selectedMarkerMessage = "🎯 3점 1열 [$targetName] 정렬 시각으로 이동! (각도차 ${String.format("%.2f", match.offsetDeg)}°)"
         } else {
-            selectedMarkerMessage = "⚠️ 향후 48시간 내에 일직선으로 정렬되는 달 궤적이 없습니다."
+            selectedMarkerMessage = "⚠️ 향후 48시간 내에 일직선으로 정렬되는 $targetName 궤적이 없습니다."
         }
     }
 
@@ -503,16 +506,28 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
         selectedPhaseFilter = filter
         isSearching = true
         coroutineScope.launch {
+            val isSun = sharedState.celestialTarget == CelestialTargetType.SUN
             val results = withContext(Dispatchers.Default) {
-                AlignmentFinder.findMoonAlignments(
-                    camera = cameraPoint,
-                    target = targetPoint,
-                    targetHeightMeters = targetHeight,
-                    startInstant = selectedInstant,
-                    duration = Duration.ofDays(days.toLong()),
-                    toleranceDeg = 0.4,
-                    phaseFilter = filter
-                )
+                if (isSun) {
+                    AlignmentFinder.findSunAlignments(
+                        camera = cameraPoint,
+                        target = targetPoint,
+                        targetHeightMeters = targetHeight,
+                        startInstant = selectedInstant,
+                        duration = Duration.ofDays(days.toLong()),
+                        toleranceDeg = 0.5
+                    )
+                } else {
+                    AlignmentFinder.findMoonAlignments(
+                        camera = cameraPoint,
+                        target = targetPoint,
+                        targetHeightMeters = targetHeight,
+                        startInstant = selectedInstant,
+                        duration = Duration.ofDays(days.toLong()),
+                        toleranceDeg = 0.4,
+                        phaseFilter = filter
+                    )
+                }
             }
             bestAlignments = results
             isSearching = false
@@ -1195,7 +1210,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                 }
 
                 Button(
-                    onClick = alignTimeToMoon,
+                    onClick = alignTimeToCelestialTarget,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1), contentColor = Color.White),
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
@@ -1275,33 +1290,82 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 프리셋 칩 (수평 스크롤)
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth()
+            // 천체 선택 캡슐 및 프리셋 칩 (수평 스크롤 행)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(PRESET_SPOTS) { spot ->
-                    val isSelected = spot == sharedState.selectedPreset && (userLocation == null || cameraPoint != userLocation)
+                // 천체 선택 토글 캡슐 [ 🌕 달 | ☀️ 태양 ]
+                Row(
+                    modifier = Modifier
+                        .background(Color(0xFF1E293B), RoundedCornerShape(14.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                        .padding(2.5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val isMoon = sharedState.celestialTarget == CelestialTargetType.MOON
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) SunGold else CardBackground)
-                            .clickable {
-                                sharedState.selectedPreset = spot
-                                sharedState.cameraPoint = spot.camera
-                                sharedState.targetPoint = spot.target
-                                sharedState.targetHeight = spot.targetHeightMeters
-                                sharedState.subjectHeight = spot.targetHeightMeters.toFloat()
-                                mapViewRef?.controller?.animateTo(OsmGeoPoint(spot.camera.latitudeDeg, spot.camera.longitudeDeg))
-                            }
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                            .clip(RoundedCornerShape(11.dp))
+                            .background(if (isMoon) SunGold else Color.Transparent)
+                            .clickable { sharedState.celestialTarget = CelestialTargetType.MOON }
+                            .padding(horizontal = 7.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = spot.name.split("➔")[0].trim(),
+                            "🌕 달",
                             fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) NightSkyBackground else TextPrimary
+                            fontWeight = if (isMoon) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isMoon) NightSkyBackground else TextPrimary
                         )
+                    }
+
+                    val isSun = sharedState.celestialTarget == CelestialTargetType.SUN
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(11.dp))
+                            .background(if (isSun) Color(0xFFF59E0B) else Color.Transparent)
+                            .clickable { sharedState.celestialTarget = CelestialTargetType.SUN }
+                            .padding(horizontal = 7.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            "☀️ 태양",
+                            fontSize = 11.sp,
+                            fontWeight = if (isSun) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSun) NightSkyBackground else TextPrimary
+                        )
+                    }
+                }
+
+                // 프리셋 칩 (수평 스크롤)
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(PRESET_SPOTS) { spot ->
+                        val isSelected = spot == sharedState.selectedPreset && (userLocation == null || cameraPoint != userLocation)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) SunGold else CardBackground)
+                                .clickable {
+                                    sharedState.selectedPreset = spot
+                                    sharedState.cameraPoint = spot.camera
+                                    sharedState.targetPoint = spot.target
+                                    sharedState.targetHeight = spot.targetHeightMeters
+                                    sharedState.subjectHeight = spot.targetHeightMeters.toFloat()
+                                    mapViewRef?.controller?.animateTo(OsmGeoPoint(spot.camera.latitudeDeg, spot.camera.longitudeDeg))
+                                }
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = spot.name.split("➔")[0].trim(),
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) NightSkyBackground else TextPrimary
+                            )
+                        }
                     }
                 }
             }
@@ -1505,6 +1569,8 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
 
     // 3. 최적 정렬 시각 모달 바텀시트 (기간 선택 + 위상 필터)
     if (showTimelineSheet) {
+        val isSun = sharedState.celestialTarget == CelestialTargetType.SUN
+        val targetName = if (isSun) "태양" else "달"
         ModalBottomSheet(
             onDismissRequest = { showTimelineSheet = false },
             containerColor = SurfaceDark
@@ -1515,13 +1581,13 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                     .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
                 Text(
-                    text = "🎯 정렬 타이밍 검색 (${bestAlignments.size}건 발견)",
+                    text = "🎯 $targetName 정렬 타이밍 검색 (${bestAlignments.size}건 발견)",
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Text(
-                    text = "선택된 기준일(${today.format(DateTimeFormatter.ofPattern("M/d"))})부터 달이 피사체 정중앙을 관통하는 최적 순간입니다.",
+                    text = "선택된 기준일(${today.format(DateTimeFormatter.ofPattern("M/d"))})부터 $targetName" + (if (isSun) "이" else "이") + " 피사체 정중앙을 관통하는 최적 순간입니다.",
                     fontSize = 12.sp,
                     color = TextSecondary,
                     modifier = Modifier.padding(bottom = 10.dp)
@@ -1548,26 +1614,28 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                if (!isSun) {
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                // 3번 기능: 달 위상 필터 칩
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("위상:", fontSize = 11.5.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
-                    AlignmentFinder.MoonPhaseFilter.values().forEach { filter ->
-                        val isSelected = selectedPhaseFilter == filter
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { runSearch(searchDays, filter) },
-                            label = { Text(filter.displayName, fontSize = 10.sp) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFF6366F1),
-                                selectedLabelColor = Color.White
+                    // 3번 기능: 달 위상 필터 칩 (달 모드에서만 표시)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("위상:", fontSize = 11.5.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                        AlignmentFinder.MoonPhaseFilter.values().forEach { filter ->
+                            val isSelected = selectedPhaseFilter == filter
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { runSearch(searchDays, filter) },
+                                label = { Text(filter.displayName, fontSize = 10.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFF6366F1),
+                                    selectedLabelColor = Color.White
+                                )
                             )
-                        )
+                        }
                     }
                 }
 
@@ -1578,7 +1646,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                         CircularProgressIndicator(color = SunGold)
                     }
                 } else if (bestAlignments.isEmpty()) {
-                    Text("선택한 기간 및 위상 조건에 일치하는 달 정렬 궤적이 없습니다.\n탐색 기간을 늘리거나 카메라 핀의 위치를 조정해 보세요.", color = TextSecondary, fontSize = 13.sp)
+                    Text("선택한 기간 동안 일직선으로 정렬되는 $targetName 궤적이 없습니다.\n탐색 기간을 늘리거나 카메라 핀의 위치를 조정해 보세요.", color = TextSecondary, fontSize = 13.sp)
                 } else {
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1970,8 +2038,13 @@ fun AlignmentEventCard(
                         color = TextPrimary
                     )
                     Spacer(modifier = Modifier.height(4.dp))
+                    val subTitle = if (event.targetType == "SUN") {
+                        "☀️ 태양 (일출/일몰 및 랜드마크 정렬)"
+                    } else {
+                        "${event.moonDetails.phase.displayName} (${(event.moonDetails.illuminationFraction * 100).toInt()}%)"
+                    }
                     Text(
-                        text = "${event.moonDetails.phase.displayName} (${(event.moonDetails.illuminationFraction * 100).toInt()}%)",
+                        text = subTitle,
                         fontSize = 12.sp,
                         color = SunGold
                     )

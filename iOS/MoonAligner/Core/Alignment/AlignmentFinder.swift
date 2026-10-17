@@ -82,6 +82,15 @@ public enum AlignmentFinder {
         public let moonDetails: MoonDetails
         public let angularOffsetDeg: Double
         public let isAligned: Bool
+        public let targetType: String
+
+        public init(date: Date, moonDetails: MoonDetails, angularOffsetDeg: Double, isAligned: Bool, targetType: String = "MOON") {
+            self.date = date
+            self.moonDetails = moonDetails
+            self.angularOffsetDeg = angularOffsetDeg
+            self.isAligned = isAligned
+            self.targetType = targetType
+        }
     }
 
     /// 달 위상 필터 종류
@@ -136,7 +145,8 @@ public enum AlignmentFinder {
                     date: currentDate,
                     moonDetails: moon,
                     angularOffsetDeg: totalOffset,
-                    isAligned: true
+                    isAligned: true,
+                    targetType: "MOON"
                 )
 
                 if lastEvent == nil || totalOffset < lastEvent!.angularOffsetDeg {
@@ -159,18 +169,82 @@ public enum AlignmentFinder {
         return results
     }
 
+    /// 특정 기간 동안 태양이 피사체를 관통하는 최적의 정렬 순간 탐색 (일출/일몰 및 주간 첨탑 관통)
+    public static func findSunAlignments(
+        camera: GeoPoint,
+        target: GeoPoint,
+        targetHeightMeters: Double,
+        startDate: Date = Date(),
+        days: Int = 7,
+        toleranceDeg: Double = 0.5
+    ) -> [AlignmentEvent] {
+        let targetBearing = calculateBearingDeg(p1: camera, p2: target)
+        let targetElevation = calculateTargetElevationAngleDeg(camera: camera, target: target, targetAdditionalHeightMeters: targetHeightMeters / 2.0)
+
+        var results: [AlignmentEvent] = []
+        var currentDate = startDate
+        let endDate = Calendar.current.date(byAdding: .day, value: days, to: startDate) ?? startDate
+
+        var lastEvent: AlignmentEvent? = nil
+
+        while currentDate < endDate {
+            let sun = EphemerisEngine.calculateSun(date: currentDate, latitudeDeg: camera.latitudeDeg, longitudeDeg: camera.longitudeDeg)
+
+            let dAz = abs(sun.azimuthDeg - targetBearing)
+            let dAzNorm = min(dAz, 360.0 - dAz)
+            let dAlt = abs(sun.altitudeDeg - targetElevation)
+            let totalOffset = sqrt(dAzNorm * dAzNorm + dAlt * dAlt)
+
+            if totalOffset <= toleranceDeg && sun.altitudeDeg > -1.0 {
+                let dummyMoon = MoonDetails(
+                    azimuthDeg: sun.azimuthDeg,
+                    altitudeDeg: sun.altitudeDeg,
+                    distanceKm: 149600000.0,
+                    phase: .fullMoon,
+                    phaseAngleDeg: 0.0,
+                    illuminationFraction: 1.0,
+                    parallacticAngleDeg: 0.0
+                )
+                let event = AlignmentEvent(
+                    date: currentDate,
+                    moonDetails: dummyMoon,
+                    angularOffsetDeg: totalOffset,
+                    isAligned: true,
+                    targetType: "SUN"
+                )
+
+                if lastEvent == nil || totalOffset < lastEvent!.angularOffsetDeg {
+                    if let last = lastEvent, currentDate.timeIntervalSince(last.date) < 600 {
+                        results.removeLast()
+                    }
+                    results.append(event)
+                    lastEvent = event
+                }
+            } else {
+                lastEvent = nil
+            }
+
+            let stepMinutes = (dAzNorm > 4.0) ? 2 : 1
+            guard let next = Calendar.current.date(byAdding: .minute, value: stepMinutes, to: currentDate) else { break }
+            currentDate = next
+        }
+
+        return results
+    }
+
     public struct AzimuthAlignmentMatch {
         public let date: Date
         public let moonDetails: MoonDetails
         public let offsetDeg: Double
     }
 
-    /// 현재 카메라와 피사체 조준선(방위각)에 달이 1열로 통과하는 가장 가까운 시각(분 단위) 탐색
+    /// 현재 카메라와 피사체 조준선(방위각)에 천체(달 또는 태양)가 1열로 통과하는 가장 가까운 시각(분 단위) 탐색
     public static func findNextAzimuthAlignment(
         camera: GeoPoint,
         target: GeoPoint,
         startDate: Date = Date(),
-        maxHours: Int = 48
+        maxHours: Int = 48,
+        isSun: Bool = false
     ) -> AzimuthAlignmentMatch? {
         let targetBearing = calculateBearingDeg(p1: camera, p2: target)
         var bestDate: Date? = nil
@@ -181,18 +255,36 @@ public enum AlignmentFinder {
         let endDate = Calendar.current.date(byAdding: .hour, value: maxHours, to: startDate) ?? startDate
 
         while current < endDate {
-            let moon = EphemerisEngine.calculateMoon(date: current, latitudeDeg: camera.latitudeDeg, longitudeDeg: camera.longitudeDeg)
-            let dAz = abs(moon.azimuthDeg - targetBearing)
+            let (azimuth, altitude, details): (Double, Double, MoonDetails) = {
+                if isSun {
+                    let s = EphemerisEngine.calculateSun(date: current, latitudeDeg: camera.latitudeDeg, longitudeDeg: camera.longitudeDeg)
+                    let dummyM = MoonDetails(
+                        azimuthDeg: s.azimuthDeg,
+                        altitudeDeg: s.altitudeDeg,
+                        distanceKm: 149600000.0,
+                        phase: .fullMoon,
+                        phaseAngleDeg: 0.0,
+                        illuminationFraction: 1.0,
+                        parallacticAngleDeg: 0.0
+                    )
+                    return (s.azimuthDeg, s.altitudeDeg, dummyM)
+                } else {
+                    let m = EphemerisEngine.calculateMoon(date: current, latitudeDeg: camera.latitudeDeg, longitudeDeg: camera.longitudeDeg)
+                    return (m.azimuthDeg, m.altitudeDeg, m)
+                }
+            }()
+
+            let dAz = abs(azimuth - targetBearing)
             let dAzNorm = min(dAz, 360.0 - dAz)
 
-            if dAzNorm < 0.5 && moon.altitudeDeg > -3.0 {
-                return AzimuthAlignmentMatch(date: current, moonDetails: moon, offsetDeg: dAzNorm)
+            if dAzNorm < 0.5 && altitude > -3.0 {
+                return AzimuthAlignmentMatch(date: current, moonDetails: details, offsetDeg: dAzNorm)
             }
 
             if dAzNorm < minOffset {
                 minOffset = dAzNorm
                 bestDate = current
-                bestMoon = moon
+                bestMoon = details
             }
 
             guard let next = Calendar.current.date(byAdding: .minute, value: 1, to: current) else { break }

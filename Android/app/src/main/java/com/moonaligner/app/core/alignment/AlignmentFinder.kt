@@ -95,8 +95,9 @@ object AlignmentFinder {
     data class AlignmentEvent(
         val timestamp: Instant,
         val moonDetails: MoonDetails,
-        val angularOffsetDeg: Double, // 달 중심과 피사체 중심 사이의 각거리 오차
-        val isAligned: Boolean        // 오차가 달 반지름 이내인가
+        val angularOffsetDeg: Double, // 천체 중심과 피사체 중심 사이의 각거리 오차
+        val isAligned: Boolean,       // 오차가 허용 오차 이내인가
+        val targetType: String = "MOON"
     )
 
     /**
@@ -111,14 +112,6 @@ object AlignmentFinder {
 
     /**
      * 특정 시간 범위 동안 달과 피사체가 일직선으로 정렬되는 순간들을 분 단위로 탐색
-     *
-     * @param camera 카메라 좌표
-     * @param target 피사체 좌표
-     * @param targetHeightMeters 피사체 자체 높이
-     * @param startInstant 탐색 시작 시각
-     * @param duration 탐색 지속 시간 (예: 3일, 7일, 30일, 90일)
-     * @param toleranceDeg 허용 오차 각도 (기본: 약 0.4도)
-     * @param phaseFilter 달의 위상 필터
      */
     fun findMoonAlignments(
         camera: GeoPoint,
@@ -130,7 +123,6 @@ object AlignmentFinder {
         phaseFilter: MoonPhaseFilter = MoonPhaseFilter.ALL
     ): List<AlignmentEvent> {
         val targetBearing = calculateBearingDeg(camera, target)
-        // 피사체의 정중앙 높이를 타겟으로 삼음
         val targetElevation = calculateTargetElevationAngleDeg(camera, target, targetHeightMeters / 2.0)
 
         val results = mutableListOf<AlignmentEvent>()
@@ -142,15 +134,11 @@ object AlignmentFinder {
         while (current.isBefore(end)) {
             val moon = EphemerisEngine.calculateMoon(current, camera.latitudeDeg, camera.longitudeDeg)
 
-            // 달의 방위각 차이와 고도각 차이
             val dAz = abs(moon.azimuthDeg - targetBearing)
             val dAzNorm = min(dAz, 360.0 - dAz)
             val dAlt = abs(moon.altitudeDeg - targetElevation)
-
-            // 구면 삼각법에 의한 총 각거리 (Angular distance)
             val totalOffsetDeg = sqrt(dAzNorm * dAzNorm + dAlt * dAlt)
 
-            // 위상 필터 검사
             val matchesPhase = when (phaseFilter) {
                 MoonPhaseFilter.ALL -> true
                 MoonPhaseFilter.FULL_MOON -> moon.illuminationFraction >= 0.75
@@ -163,9 +151,9 @@ object AlignmentFinder {
                     timestamp = current,
                     moonDetails = moon,
                     angularOffsetDeg = totalOffsetDeg,
-                    isAligned = true
+                    isAligned = true,
+                    targetType = "MOON"
                 )
-                // 연속된 분 중 오차가 가장 작은 극소점(최적 순간)을 선별
                 if (lastEvent == null || totalOffsetDeg < lastEvent.angularOffsetDeg) {
                     if (lastEvent != null && Duration.between(lastEvent.timestamp, current).toMinutes() < 10) {
                         results.removeAt(results.lastIndex)
@@ -177,7 +165,69 @@ object AlignmentFinder {
                 lastEvent = null
             }
 
-            // 방위각 차이가 4도 이상으로 멀면 2분 단위 가속, 정렬 인접 구간에서는 1분 단위 초정밀 탐색
+            val stepMinutes = if (dAzNorm > 4.0) 2L else 1L
+            current = current.plus(Duration.ofMinutes(stepMinutes))
+        }
+
+        return results
+    }
+
+    /**
+     * 특정 시간 범위 동안 태양과 피사체가 일직선으로 정렬되는 순간(일출/일몰 관통, 주간 첨탑 정렬 등)을 분 단위로 탐색
+     */
+    fun findSunAlignments(
+        camera: GeoPoint,
+        target: GeoPoint,
+        targetHeightMeters: Double,
+        startInstant: Instant,
+        duration: Duration = Duration.ofDays(7),
+        toleranceDeg: Double = 0.5
+    ): List<AlignmentEvent> {
+        val targetBearing = calculateBearingDeg(camera, target)
+        val targetElevation = calculateTargetElevationAngleDeg(camera, target, targetHeightMeters / 2.0)
+
+        val results = mutableListOf<AlignmentEvent>()
+        var current = startInstant
+        val end = startInstant.plus(duration)
+
+        var lastEvent: AlignmentEvent? = null
+
+        while (current.isBefore(end)) {
+            val sun = EphemerisEngine.calculateSun(current, camera.latitudeDeg, camera.longitudeDeg)
+
+            val dAz = abs(sun.azimuthDeg - targetBearing)
+            val dAzNorm = min(dAz, 360.0 - dAz)
+            val dAlt = abs(sun.altitudeDeg - targetElevation)
+            val totalOffsetDeg = sqrt(dAzNorm * dAzNorm + dAlt * dAlt)
+
+            if (totalOffsetDeg <= toleranceDeg && sun.altitudeDeg > -1.0) {
+                val dummyMoon = MoonDetails(
+                    azimuthDeg = sun.azimuthDeg,
+                    altitudeDeg = sun.altitudeDeg,
+                    distanceKm = 149600000.0,
+                    angularDiameterDeg = 0.53,
+                    phase = com.moonaligner.app.core.astronomy.MoonPhase.FULL_MOON,
+                    illuminationFraction = 1.0,
+                    ageDays = 14.8
+                )
+                val event = AlignmentEvent(
+                    timestamp = current,
+                    moonDetails = dummyMoon,
+                    angularOffsetDeg = totalOffsetDeg,
+                    isAligned = true,
+                    targetType = "SUN"
+                )
+                if (lastEvent == null || totalOffsetDeg < lastEvent.angularOffsetDeg) {
+                    if (lastEvent != null && Duration.between(lastEvent.timestamp, current).toMinutes() < 10) {
+                        results.removeAt(results.lastIndex)
+                    }
+                    results.add(event)
+                    lastEvent = event
+                }
+            } else {
+                lastEvent = null
+            }
+
             val stepMinutes = if (dAzNorm > 4.0) 2L else 1L
             current = current.plus(Duration.ofMinutes(stepMinutes))
         }
@@ -192,13 +242,14 @@ object AlignmentFinder {
     )
 
     /**
-     * 현재 카메라와 피사체 조준선(방위각)에 달이 1열로 통과하는 가장 가까운 시각(분 단위) 탐색
+     * 현재 카메라와 피사체 조준선(방위각)에 천체(달 또는 태양)가 1열로 통과하는 가장 가까운 시각(분 단위) 탐색
      */
     fun findNextAzimuthAlignment(
         camera: GeoPoint,
         target: GeoPoint,
         startInstant: Instant,
-        duration: Duration = Duration.ofHours(48)
+        duration: Duration = Duration.ofHours(48),
+        isSun: Boolean = false
     ): AzimuthAlignmentMatch? {
         val targetBearing = calculateBearingDeg(camera, target)
         var bestInstant: Instant? = null
@@ -209,18 +260,34 @@ object AlignmentFinder {
         val end = startInstant.plus(duration)
 
         while (current.isBefore(end)) {
-            val moon = EphemerisEngine.calculateMoon(current, camera.latitudeDeg, camera.longitudeDeg)
-            val dAz = abs(moon.azimuthDeg - targetBearing)
+            val (azimuth, altitude, details) = if (isSun) {
+                val s = EphemerisEngine.calculateSun(current, camera.latitudeDeg, camera.longitudeDeg)
+                val dummyM = MoonDetails(
+                    azimuthDeg = s.azimuthDeg,
+                    altitudeDeg = s.altitudeDeg,
+                    distanceKm = 149600000.0,
+                    angularDiameterDeg = 0.53,
+                    phase = com.moonaligner.app.core.astronomy.MoonPhase.FULL_MOON,
+                    illuminationFraction = 1.0,
+                    ageDays = 14.8
+                )
+                Triple(s.azimuthDeg, s.altitudeDeg, dummyM)
+            } else {
+                val m = EphemerisEngine.calculateMoon(current, camera.latitudeDeg, camera.longitudeDeg)
+                Triple(m.azimuthDeg, m.altitudeDeg, m)
+            }
+
+            val dAz = abs(azimuth - targetBearing)
             val dAzNorm = min(dAz, 360.0 - dAz)
 
-            if (dAzNorm < 0.5 && moon.altitudeDeg > -3.0) {
-                return AzimuthAlignmentMatch(current, moon, dAzNorm)
+            if (dAzNorm < 0.5 && altitude > -3.0) {
+                return AzimuthAlignmentMatch(current, details, dAzNorm)
             }
 
             if (dAzNorm < minOffset) {
                 minOffset = dAzNorm
                 bestInstant = current
-                bestMoon = moon
+                bestMoon = details
             }
             current = current.plus(Duration.ofMinutes(1))
         }

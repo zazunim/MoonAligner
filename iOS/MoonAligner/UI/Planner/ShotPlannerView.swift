@@ -1055,15 +1055,26 @@ public struct ShotPlannerView: View {
     private func runSearch(days: Int? = nil, filter: AlignmentFinder.MoonPhaseFilter? = nil) {
         if let d = days { searchDays = d }
         if let f = filter { selectedPhaseFilter = f }
-        alignments = AlignmentFinder.findMoonAlignments(
-            camera: sharedState.cameraPoint,
-            target: sharedState.targetPoint,
-            targetHeightMeters: sharedState.targetHeight,
-            startDate: selectedDate,
-            days: searchDays,
-            toleranceDeg: 0.4,
-            phaseFilter: selectedPhaseFilter
-        )
+        if sharedState.celestialTarget == .sun {
+            alignments = AlignmentFinder.findSunAlignments(
+                camera: sharedState.cameraPoint,
+                target: sharedState.targetPoint,
+                targetHeightMeters: sharedState.targetHeight,
+                startDate: selectedDate,
+                days: searchDays,
+                toleranceDeg: 0.5
+            )
+        } else {
+            alignments = AlignmentFinder.findMoonAlignments(
+                camera: sharedState.cameraPoint,
+                target: sharedState.targetPoint,
+                targetHeightMeters: sharedState.targetHeight,
+                startDate: selectedDate,
+                days: searchDays,
+                toleranceDeg: 0.4,
+                phaseFilter: selectedPhaseFilter
+            )
+        }
         showSearchSheet = true
     }
 
@@ -1073,6 +1084,18 @@ public struct ShotPlannerView: View {
 
     private var sun: SunDetails {
         EphemerisEngine.calculateSun(date: selectedDate, latitudeDeg: sharedState.cameraPoint.latitudeDeg, longitudeDeg: sharedState.cameraPoint.longitudeDeg)
+    }
+
+    private var isSunTarget: Bool {
+        sharedState.celestialTarget == .sun
+    }
+
+    private var targetAzimuth: Double {
+        isSunTarget ? sun.azimuthDeg : moon.azimuthDeg
+    }
+
+    private var targetAltitude: Double {
+        isSunTarget ? sun.altitudeDeg : moon.altitudeDeg
     }
 
     private var sunDayTimes: SunDayTimes {
@@ -1097,37 +1120,43 @@ public struct ShotPlannerView: View {
     }
 
     private var azDiff: Double {
-        let diff = abs(moon.azimuthDeg - bearing)
+        let diff = abs(targetAzimuth - bearing)
         return min(diff, 360.0 - diff)
     }
 
     private var isAligned: Bool {
-        azDiff < 1.0 && moon.altitudeDeg > -2.0
+        azDiff < 1.0 && targetAltitude > -2.0
     }
 
     public init(sharedState: PlannerSharedState) {
         self.sharedState = sharedState
     }
 
-    /// 🎯 피사체를 고정하고, 현재 시각 달 방향에 맞춰 카메라를 1열 일직선상으로 즉시 이동
+    /// 🎯 피사체를 고정하고, 현재 시각 천체(달/태양) 방향에 맞춰 카메라를 1열 일직선상으로 즉시 이동
     private func alignCameraToColinear() {
-        sharedState.alignCameraToMoonLine(moonAzimuthDeg: moon.azimuthDeg)
-        selectedMarkerMessage = "🎯 3점 1열 카메라 정렬 완료! [📷카메라 ➔ 🗼피사체 ➔ 🌕달]"
+        let isSun = sharedState.celestialTarget == .sun
+        let azimuth = isSun ? sun.azimuthDeg : moon.azimuthDeg
+        sharedState.alignCameraToMoonLine(moonAzimuthDeg: azimuth)
+        let label = isSun ? "☀️태양" : "🌕달"
+        selectedMarkerMessage = "🎯 3점 1열 카메라 정렬 완료! [📷카메라 ➔ 🗼피사체 ➔ \(label)]"
     }
 
-    /// ⏱️ 현재 카메라-피사체 조준선에 달이 1열로 통과하는 가장 가까운 시각으로 자동 이동
-    private func alignTimeToMoon() {
+    /// ⏱️ 현재 카메라-피사체 조준선에 달/태양이 1열로 통과하는 가장 가까운 시각으로 자동 이동
+    private func alignTimeToCelestialTarget() {
+        let isSun = sharedState.celestialTarget == .sun
+        let label = isSun ? "태양" : "달"
         if let match = AlignmentFinder.findNextAzimuthAlignment(
             camera: sharedState.cameraPoint,
             target: sharedState.targetPoint,
-            startDate: selectedDate
+            startDate: selectedDate,
+            isSun: isSun
         ) {
             now = match.date
             selectedHourFloat = EphemerisEngine.currentHourFloat(for: match.date)
             isLiveSync = false
-            selectedMarkerMessage = "🎯 3점 1열 정렬 시각으로 이동! (각도차 \(String(format: "%.2f", match.offsetDeg))°)"
+            selectedMarkerMessage = "🎯 3점 1열 \(label) 정렬 시각으로 이동! (각도차 \(String(format: "%.2f", match.offsetDeg))°)"
         } else {
-            selectedMarkerMessage = "⚠️ 향후 48시간 내에 일직선으로 정렬되는 달 궤적이 없습니다."
+            selectedMarkerMessage = "⚠️ 향후 48시간 내에 일직선으로 정렬되는 \(label) 궤적이 없습니다."
         }
     }
 
@@ -1383,7 +1412,7 @@ public struct ShotPlannerView: View {
                         .cornerRadius(16)
                     }
 
-                    Button(action: { alignTimeToMoon() }) {
+                    Button(action: { alignTimeToCelestialTarget() }) {
                         HStack(spacing: 4) {
                             Image(systemName: "clock.arrow.circlepath")
                             Text("시각 1열")
@@ -1447,26 +1476,61 @@ public struct ShotPlannerView: View {
 
             // 2. 하단 분석 패널 (미니멀 뷰파인더 HUD)
             VStack(spacing: 8) {
-                // 프리셋 칩
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(PresetSpot.defaults) { spot in
-                            let isSelected = spot == sharedState.selectedPreset && (locManager.userLocation == nil || sharedState.cameraPoint != locManager.userLocation)
-                            Button(action: {
-                                sharedState.selectedPreset = spot
-                                sharedState.cameraPoint = spot.camera
-                                sharedState.targetPoint = spot.target
-                                sharedState.targetHeight = spot.targetHeightMeters
-                                sharedState.subjectHeight = Float(spot.targetHeightMeters)
-                                sharedState.centerTrigger = CLLocationCoordinate2D(latitude: spot.camera.latitudeDeg, longitude: spot.camera.longitudeDeg)
-                            }) {
-                                Text(spot.name.components(separatedBy: "➔").first?.trimmingCharacters(in: .whitespaces) ?? spot.name)
-                                    .font(.system(size: 11, weight: isSelected ? .bold : .medium))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(isSelected ? Color.sunGold : Color.cardBackground)
-                                    .foregroundColor(isSelected ? Color.nightSky : Color.textPrimary)
-                                    .cornerRadius(12)
+                // 천체 전환 토글 및 프리셋 칩 바
+                HStack(spacing: 8) {
+                    // [ 🌕 달 | ☀️ 태양 ] 토글 캡슐
+                    HStack(spacing: 0) {
+                        let isMoon = sharedState.celestialTarget == .moon
+                        Button(action: { sharedState.celestialTarget = .moon }) {
+                            Text("🌕 달")
+                                .font(.system(size: 11, weight: isMoon ? .bold : .medium))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(isMoon ? Color.sunGold : Color.clear)
+                                .foregroundColor(isMoon ? .nightSky : .textSecondary)
+                                .cornerRadius(10)
+                        }
+
+                        let isSun = sharedState.celestialTarget == .sun
+                        Button(action: { sharedState.celestialTarget = .sun }) {
+                            Text("☀️ 태양")
+                                .font(.system(size: 11, weight: isSun ? .bold : .medium))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(isSun ? Color(hex: 0xF59E0B) : Color.clear)
+                                .foregroundColor(isSun ? .nightSky : .textSecondary)
+                                .cornerRadius(10)
+                        }
+                    }
+                    .padding(2)
+                    .background(Color(hex: 0x1E293B))
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+
+                    // 프리셋 칩
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(PresetSpot.defaults) { spot in
+                                let isSelected = spot == sharedState.selectedPreset && (locManager.userLocation == nil || sharedState.cameraPoint != locManager.userLocation)
+                                Button(action: {
+                                    sharedState.selectedPreset = spot
+                                    sharedState.cameraPoint = spot.camera
+                                    sharedState.targetPoint = spot.target
+                                    sharedState.targetHeight = spot.targetHeightMeters
+                                    sharedState.subjectHeight = Float(spot.targetHeightMeters)
+                                    sharedState.centerTrigger = CLLocationCoordinate2D(latitude: spot.camera.latitudeDeg, longitude: spot.camera.longitudeDeg)
+                                }) {
+                                    Text(spot.name.components(separatedBy: "➔").first?.trimmingCharacters(in: .whitespaces) ?? spot.name)
+                                        .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(isSelected ? Color.sunGold : Color.cardBackground)
+                                        .foregroundColor(isSelected ? Color.nightSky : Color.textPrimary)
+                                        .cornerRadius(12)
+                                }
                             }
                         }
                     }
@@ -1487,7 +1551,10 @@ public struct ShotPlannerView: View {
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundColor(.textSecondary)
                             }
-                            Text("달 \(String(format: "%.1f", moon.azimuthDeg))° · 고도 \(String(format: "%.1f", moon.altitudeDeg))°")
+                            let celestialStr = isSunTarget ?
+                                "태양 \(String(format: "%.1f", sun.azimuthDeg))° · 고도 \(String(format: "%.1f", sun.altitudeDeg))°" :
+                                "달 \(String(format: "%.1f", moon.azimuthDeg))° · 고도 \(String(format: "%.1f", moon.altitudeDeg))°"
+                            Text(celestialStr)
                                 .font(.system(size: 11))
                                 .foregroundColor(.textSecondary)
                         }
@@ -1685,6 +1752,7 @@ public struct ShotPlannerView: View {
                 events: alignments,
                 searchDays: searchDays,
                 selectedPhaseFilter: selectedPhaseFilter,
+                isSun: sharedState.celestialTarget == .sun,
                 onSearch: { days, filter in
                     runSearch(days: days, filter: filter)
                 },
@@ -1706,7 +1774,8 @@ public struct ShotPlannerView: View {
                     let df = DateFormatter()
                     df.dateFormat = "M/d HH:mm"
                     df.timeZone = EphemerisEngine.seoulCalendar.timeZone
-                    planNameInput = "\(sharedState.selectedSubjectType.displayName) 정렬 (\(df.string(from: event.date)))"
+                    let targetLabel = (sharedState.celestialTarget == .sun) ? "태양" : "달"
+                    planNameInput = "\(sharedState.selectedSubjectType.displayName) \(targetLabel) 정렬 (\(df.string(from: event.date)))"
                     showSavePlanSheet = true
                 }
             )
@@ -1934,6 +2003,7 @@ private struct AlignmentResultsSheet: View {
     let events: [AlignmentFinder.AlignmentEvent]
     let searchDays: Int
     let selectedPhaseFilter: AlignmentFinder.MoonPhaseFilter
+    var isSun: Bool = false
     let onSearch: (Int, AlignmentFinder.MoonPhaseFilter) -> Void
     let onApplyEvent: (AlignmentFinder.AlignmentEvent) -> Void
     let onSavePlan: (AlignmentFinder.AlignmentEvent) -> Void
@@ -1966,26 +2036,28 @@ private struct AlignmentResultsSheet: View {
                         Spacer()
                     }
 
-                    // 위상 필터 칩
-                    HStack(spacing: 6) {
-                        Text("위상:")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.textSecondary)
-                        ForEach(AlignmentFinder.MoonPhaseFilter.allCases) { filter in
-                            let isSelected = selectedPhaseFilter == filter
-                            Button(action: {
-                                onSearch(searchDays, filter)
-                            }) {
-                                Text(filter.rawValue)
-                                    .font(.system(size: 10, weight: isSelected ? .bold : .regular))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 4)
-                                    .background(isSelected ? Color(hex: 0x6366F1) : Color.cardBackground)
-                                    .foregroundColor(isSelected ? .white : .textPrimary)
-                                    .cornerRadius(6)
+                    // 위상 필터 칩 (태양일 때는 불필요하므로 숨김)
+                    if !isSun {
+                        HStack(spacing: 6) {
+                            Text("위상:")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.textSecondary)
+                            ForEach(AlignmentFinder.MoonPhaseFilter.allCases) { filter in
+                                let isSelected = selectedPhaseFilter == filter
+                                Button(action: {
+                                    onSearch(searchDays, filter)
+                                }) {
+                                    Text(filter.rawValue)
+                                        .font(.system(size: 10, weight: isSelected ? .bold : .regular))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 4)
+                                        .background(isSelected ? Color(hex: 0x6366F1) : Color.cardBackground)
+                                        .foregroundColor(isSelected ? .white : .textPrimary)
+                                        .cornerRadius(6)
+                                }
                             }
+                            Spacer()
                         }
-                        Spacer()
                     }
                 }
                 .padding(.horizontal, 16)
@@ -1997,10 +2069,10 @@ private struct AlignmentResultsSheet: View {
                 if events.isEmpty {
                     VStack(spacing: 12) {
                         Spacer()
-                        Image(systemName: "moon.stars")
+                        Image(systemName: isSun ? "sun.max.fill" : "moon.stars")
                             .font(.system(size: 40))
                             .foregroundColor(.textSecondary)
-                        Text("선택한 조건에 일치하는 정렬 궤적이 없습니다.")
+                        Text(isSun ? "선택한 기간 동안 태양-피사체 정렬 궤적이 없습니다." : "선택한 조건에 일치하는 정렬 궤적이 없습니다.")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(.textPrimary)
                         Text("탐색 기간을 30일/90일로 늘리거나 카메라 핀의 위치를 조정해 보세요.")
@@ -2022,7 +2094,7 @@ private struct AlignmentResultsSheet: View {
                     }
                 }
             }
-            .navigationTitle("🎯 정렬 타이밍 (\(events.count)건)")
+            .navigationTitle(isSun ? "🎯 태양 정렬 타이밍 (\(events.count)건)" : "🎯 달 정렬 타이밍 (\(events.count)건)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -2054,9 +2126,15 @@ private struct AlignmentEventRowView: View {
                     Text(formattedDate)
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.textPrimary)
-                    Text("\(event.moonDetails.phase.displayName) (\(Int(event.moonDetails.illuminationFraction * 100))%)")
-                        .font(.system(size: 12))
-                        .foregroundColor(.sunGold)
+                    if event.targetType == "SUN" {
+                        Text("☀️ 태양 (일출/일몰 및 랜드마크 정렬)")
+                            .font(.system(size: 12))
+                            .foregroundColor(.sunGold)
+                    } else {
+                        Text("\(event.moonDetails.phase.displayName) (\(Int(event.moonDetails.illuminationFraction * 100))%)")
+                            .font(.system(size: 12))
+                            .foregroundColor(.sunGold)
+                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 3) {
