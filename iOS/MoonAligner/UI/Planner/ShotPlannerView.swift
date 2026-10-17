@@ -1187,7 +1187,41 @@ public struct ShotPlannerView: View {
                 .edgesIgnoringSafeArea(.top)
 
                 // 상단: 미니멀 글래스 컨트롤 바 & 상태 배너
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(spacing: 6) {
+                    // 🌟 최상단 중앙: 큼직하고 직관적인 [ 🌕 달 플래너 | ☀️ 태양 플래너 ] 세그먼트 스위치
+                    HStack(spacing: 4) {
+                        let isMoon = sharedState.celestialTarget == .moon
+                        Button(action: { sharedState.celestialTarget = .moon }) {
+                            Text("🌕 달 플래너")
+                                .font(.system(size: 12, weight: isMoon ? .bold : .medium))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
+                                .background(isMoon ? Color.sunGold : Color.clear)
+                                .foregroundColor(isMoon ? .nightSky : .textSecondary)
+                                .cornerRadius(14)
+                        }
+
+                        let isSun = sharedState.celestialTarget == .sun
+                        Button(action: { sharedState.celestialTarget = .sun }) {
+                            Text("☀️ 태양 플래너")
+                                .font(.system(size: 12, weight: isSun ? .bold : .medium))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
+                                .background(isSun ? Color(hex: 0xF59E0B) : Color.clear)
+                                .foregroundColor(isSun ? .nightSky : .textSecondary)
+                                .cornerRadius(14)
+                        }
+                    }
+                    .padding(3)
+                    .background(Color(hex: 0x0F172A, alpha: 0.92))
+                    .cornerRadius(18)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(Color.sunGold.opacity(0.5), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+                    .padding(.top, 4)
+
                     // 상단 툴바: [ 좌측 핀 모드 세그먼트 | 우측 빠른 액션 아이콘들 ]
                     HStack {
                         // 1) 핀 이동 모드 스위치

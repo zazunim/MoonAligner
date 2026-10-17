@@ -938,10 +938,53 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .align(Alignment.TopStart)
+                    .align(Alignment.TopCenter)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // 🌟 최상단 중앙: 큼직하고 직관적인 [ 🌕 달 플래너 | ☀️ 태양 플래너 ] 세그먼트 스위치
+                Row(
+                    modifier = Modifier
+                        .background(Color(0xF00F172A), RoundedCornerShape(18.dp))
+                        .border(1.dp, SunGold.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val isMoon = sharedState.celestialTarget == CelestialTargetType.MOON
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isMoon) SunGold else Color.Transparent)
+                            .clickable { sharedState.celestialTarget = CelestialTargetType.MOON }
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            "🌕 달 플래너",
+                            fontSize = 12.sp,
+                            fontWeight = if (isMoon) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isMoon) NightSkyBackground else TextSecondary
+                        )
+                    }
+
+                    val isSun = sharedState.celestialTarget == CelestialTargetType.SUN
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isSun) Color(0xFFF59E0B) else Color.Transparent)
+                            .clickable { sharedState.celestialTarget = CelestialTargetType.SUN }
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            "☀️ 태양 플래너",
+                            fontSize = 12.sp,
+                            fontWeight = if (isSun) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSun) NightSkyBackground else TextSecondary
+                        )
+                    }
+                }
+
                 // 상단 툴바: [ 좌측 핀 모드 세그먼트 | 우측 빠른 액션 아이콘들 ]
                 Row(
                     modifier = Modifier.fillMaxWidth(),
