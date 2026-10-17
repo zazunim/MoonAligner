@@ -8,9 +8,14 @@ import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
 import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -18,18 +23,23 @@ import android.os.Bundle
 import android.preference.PreferenceManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import android.app.DatePickerDialog
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -282,11 +292,6 @@ val PRESET_SPOTS = listOf(
     )
 )
 
-enum class PlannerHudTab {
-    MOON_ALIGNMENT,
-    SUN_AND_SHADOW
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShotPlannerScreen(sharedState: PlannerSharedState) {
@@ -308,7 +313,35 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
         )
     }
     var userLocation by remember { mutableStateOf<GeoPoint?>(null) }
+    var userHeadingDeg by remember { mutableStateOf<Double?>(null) }
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
+
+    // 실시간 스마트폰 지향 각도 센서 (나침반 / 회전 벡터)
+    DisposableEffect(Unit) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val sensorListener = object : SensorEventListener {
+            val rotationMatrix = FloatArray(9)
+            val orientationAngles = FloatArray(3)
+            override fun onSensorChanged(event: SensorEvent) {
+                if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
+                    SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                    SensorManager.getOrientation(rotationMatrix, orientationAngles)
+                    val azimuthRad = orientationAngles[0]
+                    var deg = Math.toDegrees(azimuthRad.toDouble())
+                    if (deg < 0) deg += 360.0
+                    userHeadingDeg = deg
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+        if (sensorManager != null && rotationSensor != null) {
+            sensorManager.registerListener(sensorListener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
+        }
+        onDispose {
+            sensorManager?.unregisterListener(sensorListener)
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -408,7 +441,9 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
 
     val showShadow = true
     val showSunRays = true
-    var currentTab by remember { mutableStateOf(PlannerHudTab.SUN_AND_SHADOW) }
+    val isSunTarget = sharedState.celestialTarget == CelestialTargetType.SUN
+    val targetAzimuth = if (isSunTarget) sun.azimuthDeg else moon.azimuthDeg
+    val targetAltitude = if (isSunTarget) sun.altitudeDeg else moon.altitudeDeg
 
     // 기하학 계산값 (거리, 방위각)
     val distance = remember(cameraPoint, targetPoint) {
@@ -418,16 +453,17 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
         AlignmentFinder.calculateBearingDeg(cameraPoint, targetPoint)
     }
 
-    // 달 방향과 조준선의 일치 여부
-    val azDiff = remember(moon.azimuthDeg, bearing) {
-        val diff = abs(moon.azimuthDeg - bearing)
+    // 천체(달 or 태양) 방향과 조준선의 일치 여부
+    val azDiff = remember(targetAzimuth, bearing) {
+        val diff = abs(targetAzimuth - bearing)
         min(diff, 360.0 - diff)
     }
-    val isAligned = azDiff < 1.0 && moon.altitudeDeg > -2.0
+    val isAligned = azDiff < 1.0 && targetAltitude > -2.0
 
     val alignCameraToColinear: () -> Unit = {
-        sharedState.alignCameraToMoonLine(moon.azimuthDeg)
-        selectedMarkerMessage = "🎯 3점 1열 카메라 정렬 완료! [📷카메라 ➔ 🗼피사체 ➔ 🌕달]"
+        sharedState.alignCameraToMoonLine(targetAzimuth)
+        val name = if (isSunTarget) "☀️태양" else "🌕달"
+        selectedMarkerMessage = "🎯 3점 1열 카메라 정렬 완료! [📷카메라 ➔ 🗼피사체 ➔ $name]"
     }
 
     val alignTimeToMoon: () -> Unit = {
@@ -528,6 +564,8 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                         sharedState.anchorMode,
                         sharedState.isDistanceLockedToCalculator,
                         userLocation,
+                        userHeadingDeg?.roundToInt(),
+                        sharedState.celestialTarget,
                         targetHeight.roundToInt(),
                         selectedHour,
                         selectedMinute
@@ -849,19 +887,15 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                     mapView.overlays.add(targetMarker)
 
                     // (G) 📍 실시간 내 GPS 위치 마커 & 현장 삼각대 위치 유도선
+                    // (G) 📍 실시간 내 GPS 위치 마커 (나침반 지향 콘 포함) & 현장 삼각대 위치 유도선
                     userLocation?.let { uLoc ->
                         val userOsm = OsmGeoPoint(uLoc.latitudeDeg, uLoc.longitudeDeg)
+                        val headingStr = if (userHeadingDeg != null) " (${userHeadingDeg!!.roundToInt()}°)" else ""
                         val userMarker = Marker(mapView).apply {
                             position = userOsm
-                            icon = createCircularMarkerIcon(
-                                context = context,
-                                symbol = "📍",
-                                bgColor = AndroidColor.parseColor("#0EA5E9"),
-                                sizeDp = 44,
-                                borderColor = AndroidColor.WHITE
-                            )
+                            icon = createUserPuckMarkerIcon(context, userHeadingDeg)
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                            title = "내 현재 위치"
+                            title = "내 현재 위치$headingStr"
                             setOnMarkerClickListener { _, _ -> false }
                         }
                         mapView.overlays.add(userMarker)
@@ -872,28 +906,11 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                             val guideLine = Polyline().apply {
                                 setPoints(listOf(userOsm, camOsm))
                                 outlinePaint.color = AndroidColor.parseColor("#38BDF8")
-                                outlinePaint.strokeWidth = 5f
+                                outlinePaint.strokeWidth = 4f
                                 outlinePaint.pathEffect = DashPathEffect(floatArrayOf(12f, 12f), 0f)
                                 title = "삼각대 유도선"
                             }
                             mapView.overlays.add(guideLine)
-
-                            val guideMidLat = (uLoc.latitudeDeg + cameraPoint.latitudeDeg) / 2.0
-                            val guideMidLon = (uLoc.longitudeDeg + cameraPoint.longitudeDeg) / 2.0
-                            val guideDistStr = if (distToCam >= 1000) String.format("%.2f km", distToCam / 1000.0) else "${distToCam.roundToInt()} m"
-                            val guideBearing = AlignmentFinder.calculateBearingDeg(uLoc, cameraPoint)
-                            val guideBadge = Marker(mapView).apply {
-                                position = OsmGeoPoint(guideMidLat, guideMidLon)
-                                icon = createTextBadgeIcon(
-                                    context,
-                                    "📍 삼각대까지 $guideDistStr (${String.format("%.0f", guideBearing)}°)",
-                                    bgColor = AndroidColor.parseColor("#E60369A1"),
-                                    textColor = AndroidColor.WHITE
-                                )
-                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                                setOnMarkerClickListener { _, _ -> false }
-                            }
-                            mapView.overlays.add(guideBadge)
                         }
                     }
 
@@ -902,633 +919,542 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                 modifier = Modifier.fillMaxSize()
             )
 
-            // 상단: 원탭 핀 선택 스위치 바 & 상태 안내 & 마커 정보 배너
+            // 상단: 미니멀 글래스 컨트롤 바 & 상태 배너
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopStart)
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // 1) 불러온 촬영 계획 표시 배너
-                activePlanName?.let { pName ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xF2047857)),
-                        shape = RoundedCornerShape(10.dp),
+                // 상단 툴바: [ 좌측 핀 모드 세그먼트 | 우측 빠른 액션 아이콘들 ]
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 1) 핀 이동 모드 스위치 캡슐 [ 📷 카메라 | 🗼 피사체 | 🔓 ]
+                    Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, SunGold.copy(alpha = 0.8f), RoundedCornerShape(10.dp))
+                            .background(Color(0xE00F172A), RoundedCornerShape(16.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
+                        val isCam = sharedState.pinMoveMode == PinMoveMode.CAMERA
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isCam) Color(0xFF0284C7) else Color.Transparent)
+                                .clickable {
+                                    sharedState.pinMoveMode = PinMoveMode.CAMERA
+                                    sharedState.anchorMode = AlignmentAnchorMode.TARGET_FIXED
+                                }
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Text("📷", fontSize = 10.sp)
+                                Text(
+                                    "카메라",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isCam) FontWeight.Bold else FontWeight.Medium,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
+                        val isTarget = sharedState.pinMoveMode == PinMoveMode.TARGET
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isTarget) Color(0xFFE11D48) else Color.Transparent)
+                                .clickable {
+                                    sharedState.pinMoveMode = PinMoveMode.TARGET
+                                    sharedState.anchorMode = AlignmentAnchorMode.CAMERA_FIXED
+                                }
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Text("🗼", fontSize = 10.sp)
+                                Text(
+                                    "피사체",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isTarget) FontWeight.Bold else FontWeight.Medium,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
+                        val isLocked = sharedState.pinMoveMode == PinMoveMode.NONE
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isLocked) SunGold else Color.Transparent)
+                                .clickable { sharedState.pinMoveMode = PinMoveMode.NONE }
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
                             Text(
-                                text = "📌 불러온 계획: $pName",
-                                color = Color.White,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
+                                text = if (isLocked) "🔒" else "🔓",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
-                            IconButton(
-                                onClick = { activePlanName = null },
-                                modifier = Modifier.size(20.dp)
+                        }
+                    }
+
+                    // 2) 우측 빠른 액션 원형 아이콘들 (GPS / 카메라설정 / 저장 / 목록)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xE00F172A))
+                                .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                                .clickable {
+                                    if (!hasLocationPermission) {
+                                        permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                                    } else {
+                                        userLocation?.let { uLoc ->
+                                            mapViewRef?.controller?.animateTo(OsmGeoPoint(uLoc.latitudeDeg, uLoc.longitudeDeg))
+                                        }
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = if (userLocation != null) "📍" else "🛰️", fontSize = 12.sp)
+                        }
+
+                        if (userLocation != null) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xE00F172A))
+                                    .border(1.dp, SunGold.copy(alpha = 0.6f), CircleShape)
+                                    .clickable {
+                                        userLocation?.let { uLoc ->
+                                            sharedState.cameraPoint = uLoc
+                                            mapViewRef?.controller?.animateTo(OsmGeoPoint(uLoc.latitudeDeg, uLoc.longitudeDeg))
+                                            selectedMarkerMessage = "📷 내 현재 GPS 위치로 카메라 삼각대 좌표가 설정되었습니다."
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text("✕", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("📸", fontSize = 12.sp)
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xE00F172A))
+                                .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                                .clickable {
+                                    val timeFormatter = DateTimeFormatter.ofPattern("M/d HH:mm")
+                                    val targetName = sharedState.selectedSubjectType.displayName
+                                    planNameInput = "$targetName 정렬 (${selectedInstant.atZone(seoulZone).format(timeFormatter)})"
+                                    showSavePlanDialog = true
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("💾", fontSize = 12.sp)
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xE00F172A))
+                                .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                            .clickable {
+                                savedPlans = ShotPlanStorage.loadPlans(context)
+                                showSavedPlansSheet = true
+                            },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(contentAlignment = Alignment.TopEnd) {
+                                Text("📁", fontSize = 12.sp)
+                                if (savedPlans.isNotEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(SunGold)
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
-                // 2) 실시간 현장 삼각대 위치 유도 가이드 배너 (GPS 켜짐 시)
+                // 활성 계획 배너 (불러온 계획이 있을 때만 미니멀 표시)
+                activePlanName?.let { pName ->
+                    Row(
+                        modifier = Modifier
+                            .background(Color(0xE6047857), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("🔖", fontSize = 10.sp)
+                        Text(pName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        IconButton(
+                            onClick = { activePlanName = null },
+                            modifier = Modifier.size(16.dp)
+                        ) {
+                            Text("✕", color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // 현장 삼각대 위치 유도 (GPS 켜짐 시 컴팩트 표시 + 스마트폰 시선 방향)
                 userLocation?.let { uLoc ->
                     val distToCam = AlignmentFinder.calculateDistanceMeters(uLoc, cameraPoint)
                     val bearingToCam = AlignmentFinder.calculateBearingDeg(uLoc, cameraPoint)
                     val isArrived = distToCam < 8.0
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isArrived) Color(0xF2059669) else Color(0xF20284C7)
-                        ),
-                        shape = RoundedCornerShape(10.dp),
+                    val headingText = if (userHeadingDeg != null) " · 시선 ${userHeadingDeg!!.roundToInt()}°" else ""
+                    Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, if (isArrived) SunGold else Color(0xFF38BDF8), RoundedCornerShape(10.dp))
+                            .background(Color(0xE00F172A), RoundedCornerShape(12.dp))
+                            .border(1.dp, if (isArrived) SunGold.copy(alpha = 0.8f) else Color(0xFF0284C7).copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val guideMsg = if (isArrived) {
-                                "🎉 삼각대 목표 위치 도착! (오차 ${distToCam.roundToInt()}m)"
-                            } else {
-                                val distStr = if (distToCam >= 1000) String.format("%.2fkm", distToCam / 1000.0) else "${distToCam.roundToInt()}m"
-                                "📍 현장 삼각대 지점까지: $distStr (${bearingToCam.roundToInt()}° 방향 이동)"
-                            }
-                            Text(
-                                text = guideMsg,
-                                color = Color.White,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                        Text(if (isArrived) "🎯" else "🧭", fontSize = 10.sp)
+                        val distText = if (distToCam >= 1000) String.format("%.2fkm", distToCam / 1000.0) else "${distToCam.roundToInt()}m"
+                        val guideMsg = if (isArrived) "삼각대 도착 (오차 ${distToCam.roundToInt()}m)$headingText" else "삼각대까지 $distText · ${bearingToCam.roundToInt()}°$headingText"
+                        Text(guideMsg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                     }
                 }
 
-                // 마커 터치 시 나타나는 시각/방위각 정보 배너 (일출, 일몰, 태양, 달)
+                // 마커 터치 시 미니멀 토스트 정보
                 selectedMarkerMessage?.let { msg ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xF20F172A)),
-                        shape = RoundedCornerShape(10.dp),
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, SunGold.copy(alpha = 0.8f), RoundedCornerShape(10.dp))
+                            .background(Color(0xF20F172A), RoundedCornerShape(12.dp))
+                            .border(1.dp, SunGold.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Text(
-                                text = "ℹ️ $msg",
-                                color = Color.White,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f)
-                            )
-                            IconButton(
-                                onClick = { selectedMarkerMessage = null },
-                                modifier = Modifier.size(22.dp)
-                            ) {
-                                Text("✕", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
+                            Text("ℹ️", fontSize = 11.sp)
+                            Text(msg, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color.White)
+                        }
+                        IconButton(
+                            onClick = { selectedMarkerMessage = null },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Text("✕", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Button(
-                        onClick = {
-                            sharedState.pinMoveMode = PinMoveMode.CAMERA
-                            sharedState.anchorMode = AlignmentAnchorMode.TARGET_FIXED
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (sharedState.pinMoveMode == PinMoveMode.CAMERA) Color(0xFF0284C7) else SurfaceDark.copy(alpha = 0.9f),
-                            contentColor = Color.White
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Text("📷 카메라 이동", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            sharedState.pinMoveMode = PinMoveMode.TARGET
-                            sharedState.anchorMode = AlignmentAnchorMode.CAMERA_FIXED
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (sharedState.pinMoveMode == PinMoveMode.TARGET) Color(0xFFE11D48) else SurfaceDark.copy(alpha = 0.9f),
-                            contentColor = Color.White
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Text("🗼 피사체 이동", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = { sharedState.pinMoveMode = PinMoveMode.NONE },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (sharedState.pinMoveMode == PinMoveMode.NONE) SunGold else SurfaceDark.copy(alpha = 0.9f),
-                            contentColor = if (sharedState.pinMoveMode == PinMoveMode.NONE) NightSkyBackground else TextSecondary
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Text("✋ 잠금", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-
-                val guideText = when (sharedState.pinMoveMode) {
-                    PinMoveMode.CAMERA -> if (sharedState.isDistanceLockedToCalculator) {
-                        "🎯 지도를 한 번 터치하면 [🗼 피사체 고정 + 거리 유지] 상태로 📷 방향이 이동합니다"
-                    } else {
-                        "💡 지도의 원하는 지점을 한 번 터치하면 📷 카메라가 즉시 이동합니다"
-                    }
-                    PinMoveMode.TARGET -> if (sharedState.isDistanceLockedToCalculator) {
-                        "🎯 지도를 한 번 터치하면 [📷 카메라 고정 + 거리 유지] 상태로 🗼 피사체 방향이 이동합니다"
-                    } else {
-                        "💡 지도의 원하는 지점을 한 번 터치하면 🗼 피사체가 즉시 이동합니다"
-                    }
-                    PinMoveMode.NONE -> "✋ 핀 이동 잠금 상태 (핀이나 상단 버튼을 한 번 터치해 선택)"
-                }
-
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark.copy(alpha = 0.92f)),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text(
-                        text = guideText,
-                        color = MoonGlow,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                    )
-                }
             }
 
-            // 지도 우측 상단 플로팅 범례 (Legend)
-            Card(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 80.dp, end = 10.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark.copy(alpha = 0.88f)),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                    Text("🗺️ 지도 범례", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text("📷 카메라 (원탭 이동)", fontSize = 9.sp, color = Color(0xFF38BDF8))
-                    Text("🗼 피사체 (원탭 이동)", fontSize = 9.sp, color = Color(0xFFFB7185))
-                    Text("⭕ 촬영 거리 반경 원", fontSize = 9.sp, color = Color(0xFF38BDF8))
-                    Text("🌕 달 / ☀️ 태양 광선", fontSize = 9.sp, color = SunGold)
-                    Text("👥 피사체 그림자", fontSize = 9.sp, color = Color(0xFF94A3B8))
-                }
-            }
+            // 지도 좌측 하단: 단일 플로팅 글래스 정렬 캡슐
+            val calcDist = sharedState.calculatorRequiredDistance
+            val calcDistStr = if (calcDist >= 1000) String.format("%.2fkm", calcDist / 1000.0) else "${calcDist.roundToInt()}m"
+            var showDistanceMenu by remember { mutableStateOf(false) }
 
-            // 지도 하단 좌측: 계산기 거리 자동 정렬 버튼 & 실시간 GPS 컨트롤 버튼
-            Column(
+            Row(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(start = 12.dp, bottom = 10.dp)
+                    .background(Color(0xD10F172A), RoundedCornerShape(20.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                val calcDist = sharedState.calculatorRequiredDistance
-                val calcDistStr = if (calcDist >= 1000) String.format("%.2fkm", calcDist / 1000.0) else "${calcDist.roundToInt()}m"
-
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Button(
-                        onClick = {
-                            sharedState.anchorMode = AlignmentAnchorMode.TARGET_FIXED
-                            sharedState.pinMoveMode = PinMoveMode.CAMERA
-                            sharedState.alignCameraToCalculatorDistance()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (sharedState.anchorMode == AlignmentAnchorMode.TARGET_FIXED) SunGold else SurfaceDark.copy(alpha = 0.92f),
-                            contentColor = if (sharedState.anchorMode == AlignmentAnchorMode.TARGET_FIXED) NightSkyBackground else Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
-                    ) {
-                        Text("🗼고정➔📷정렬($calcDistStr)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            sharedState.anchorMode = AlignmentAnchorMode.CAMERA_FIXED
-                            sharedState.pinMoveMode = PinMoveMode.TARGET
-                            sharedState.alignTargetToCalculatorDistance()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (sharedState.anchorMode == AlignmentAnchorMode.CAMERA_FIXED) Color(0xFFFB7185) else SurfaceDark.copy(alpha = 0.92f),
-                            contentColor = if (sharedState.anchorMode == AlignmentAnchorMode.CAMERA_FIXED) NightSkyBackground else Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
-                    ) {
-                        Text("📷고정➔🗼정렬($calcDistStr)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            sharedState.isDistanceLockedToCalculator = !sharedState.isDistanceLockedToCalculator
-                            if (sharedState.isDistanceLockedToCalculator) {
-                                sharedState.alignToCalculatorDistance()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (sharedState.isDistanceLockedToCalculator) Color(0xFF0284C7) else SurfaceDark.copy(alpha = 0.92f),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
-                    ) {
-                        Text(if (sharedState.isDistanceLockedToCalculator) "🔒거리고정" else "🔓자유", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = alignCameraToColinear,
+                    colors = ButtonDefaults.buttonColors(containerColor = SunGold, contentColor = NightSkyBackground),
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("🎯", fontSize = 10.sp)
+                        Text("카메라 1열", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Button(
-                        onClick = alignCameraToColinear,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = SunGold,
-                            contentColor = NightSkyBackground
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 7.dp, vertical = 6.dp),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
-                    ) {
-                        Text("🎯1열(📷카메라 이동)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = alignTimeToMoon,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF6366F1),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 7.dp, vertical = 6.dp),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
-                    ) {
-                        Text("⏱️1열(시각 맞춤)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = alignTimeToMoon,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1), contentColor = Color.White),
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("⏱️", fontSize = 10.sp)
+                        Text("시각 1열", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Button(
-                        onClick = {
-                            val defaultName = "${sharedState.selectedSubjectType.displayName} 정렬 (${today.format(DateTimeFormatter.ofPattern("M/d"))} ${String.format("%02d:%02d", selectedHour, selectedMinute)})"
-                            planNameInput = defaultName
-                            showSavePlanDialog = true
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF059669),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 7.dp, vertical = 6.dp),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (sharedState.isDistanceLockedToCalculator) Color(0xFF0284C7) else Color(0xE61E293B))
+                            .border(1.dp, if (sharedState.isDistanceLockedToCalculator) SunGold.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                            .clickable { showDistanceMenu = true }
+                            .padding(horizontal = 9.dp, vertical = 6.dp)
                     ) {
-                        Text("💾 계획 저장", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            savedPlans = ShotPlanStorage.loadPlans(context)
-                            showSavedPlansSheet = true
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF334155),
-                            contentColor = SunGold
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 7.dp, vertical = 6.dp),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
-                    ) {
-                        Text("📋 계획 목록 (${savedPlans.size})", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Button(
-                        onClick = {
-                            if (!hasLocationPermission) {
-                                permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                            } else {
-                                userLocation?.let { uLoc ->
-                                    mapViewRef?.controller?.animateTo(OsmGeoPoint(uLoc.latitudeDeg, uLoc.longitudeDeg))
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (userLocation != null) SurfaceDark.copy(alpha = 0.92f) else Color(0xDD78350F),
-                            contentColor = TextPrimary
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-                    ) {
-                        Text(
-                            text = if (userLocation != null) "📍 내 위치로 이동" else "📍 실시간 GPS 켜기",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    if (userLocation != null) {
-                        Button(
-                            onClick = {
-                                userLocation?.let { uLoc ->
-                                    sharedState.cameraPoint = uLoc
-                                    mapViewRef?.controller?.animateTo(OsmGeoPoint(uLoc.latitudeDeg, uLoc.longitudeDeg))
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF0284C7),
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-                        ) {
-                            Text("내 위치 ➔ 📷 설정", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(if (sharedState.isDistanceLockedToCalculator) "🔒" else "🔓", fontSize = 10.sp)
+                            Text(calcDistStr, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
+                    }
+
+                    DropdownMenu(
+                        expanded = showDistanceMenu,
+                        onDismissRequest = { showDistanceMenu = false },
+                        modifier = Modifier.background(SurfaceDark)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("🗼 피사체 고정 ➔ 📷 정렬 ($calcDistStr)", fontSize = 12.sp, color = Color.White) },
+                            onClick = {
+                                sharedState.anchorMode = AlignmentAnchorMode.TARGET_FIXED
+                                sharedState.pinMoveMode = PinMoveMode.CAMERA
+                                sharedState.alignCameraToCalculatorDistance()
+                                showDistanceMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("📷 카메라 고정 ➔ 🗼 정렬 ($calcDistStr)", fontSize = 12.sp, color = Color.White) },
+                            onClick = {
+                                sharedState.anchorMode = AlignmentAnchorMode.CAMERA_FIXED
+                                sharedState.pinMoveMode = PinMoveMode.TARGET
+                                sharedState.alignTargetToCalculatorDistance()
+                                showDistanceMenu = false
+                            }
+                        )
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (sharedState.isDistanceLockedToCalculator) "거리 고정 해제 (자유 이동)" else "거리 고정 켜기 ($calcDistStr)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SunGold
+                                )
+                            },
+                            onClick = {
+                                sharedState.isDistanceLockedToCalculator = !sharedState.isDistanceLockedToCalculator
+                                if (sharedState.isDistanceLockedToCalculator) {
+                                    sharedState.alignToCalculatorDistance()
+                                }
+                                showDistanceMenu = false
+                            }
+                        )
                     }
                 }
             }
         }
 
-        // 2. 하단 컨트롤 및 SunOnTrack 분석 패널
+        // 2. 하단 분석 패널 (미니멀 뷰파인더 HUD - iOS 완전 동일)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(SurfaceDark)
-                .padding(12.dp)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // (A) 인기 출사지 프리셋 선택 칩 + 내 현재 위치 칩
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            // 프리셋 칩 (수평 스크롤)
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                FilterChip(
-                    selected = userLocation != null && cameraPoint == userLocation,
-                    onClick = {
-                        if (!hasLocationPermission) {
-                            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                        } else {
-                            userLocation?.let { uLoc ->
-                                sharedState.cameraPoint = uLoc
-                                mapViewRef?.controller?.animateTo(OsmGeoPoint(uLoc.latitudeDeg, uLoc.longitudeDeg))
-                            }
-                        }
-                    },
-                    label = { Text("📍 내 위치", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = Color(0xFF0284C7),
-                        selectedLabelColor = Color.White,
-                        containerColor = if (userLocation != null) Color(0xFF0369A1) else CardBackground,
-                        labelColor = Color.White
-                    )
-                )
-
-                PRESET_SPOTS.forEach { spot ->
+                items(PRESET_SPOTS) { spot ->
                     val isSelected = spot == sharedState.selectedPreset && (userLocation == null || cameraPoint != userLocation)
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = {
-                            sharedState.selectedPreset = spot
-                            sharedState.cameraPoint = spot.camera
-                            sharedState.targetPoint = spot.target
-                            sharedState.targetHeight = spot.targetHeightMeters
-                            sharedState.subjectHeight = spot.targetHeightMeters.toFloat()
-                            mapViewRef?.controller?.animateTo(OsmGeoPoint(spot.camera.latitudeDeg, spot.camera.longitudeDeg))
-                        },
-                        label = { Text(spot.name.split("➔")[0].trim(), fontSize = 11.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = SunGold,
-                            selectedLabelColor = NightSkyBackground,
-                            containerColor = CardBackground,
-                            labelColor = TextPrimary
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) SunGold else CardBackground)
+                            .clickable {
+                                sharedState.selectedPreset = spot
+                                sharedState.cameraPoint = spot.camera
+                                sharedState.targetPoint = spot.target
+                                sharedState.targetHeight = spot.targetHeightMeters
+                                sharedState.subjectHeight = spot.targetHeightMeters.toFloat()
+                                mapViewRef?.controller?.animateTo(OsmGeoPoint(spot.camera.latitudeDeg, spot.camera.longitudeDeg))
+                            }
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = spot.name.split("➔")[0].trim(),
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) NightSkyBackground else TextPrimary
                         )
-                    )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // (B) 탭 전환: SunOnTrack 그림자/일조량 분석 vs 보름달 조준 정렬
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = currentTab == PlannerHudTab.SUN_AND_SHADOW,
-                    onClick = { currentTab = PlannerHudTab.SUN_AND_SHADOW },
-                    label = { Text("☀️ 그림자 & 태양 분석 (SunOnTrack)", fontSize = 11.sp) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = SunGold,
-                        selectedLabelColor = NightSkyBackground,
-                        containerColor = CardBackground,
-                        labelColor = TextPrimary
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
-                FilterChip(
-                    selected = currentTab == PlannerHudTab.MOON_ALIGNMENT,
-                    onClick = { currentTab = PlannerHudTab.MOON_ALIGNMENT },
-                    label = { Text("🌕 보름달 정렬 조준", fontSize = 11.sp) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MoonGlow,
-                        selectedLabelColor = NightSkyBackground,
-                        containerColor = CardBackground,
-                        labelColor = TextPrimary
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // (C) HUD 카드 내용
+            // HUD 카드 (미니멀 전문 뷰파인더)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (currentTab == PlannerHudTab.MOON_ALIGNMENT && isAligned) Color(0xFF1E3A2F) else CardBackground
+                    containerColor = if (isAligned) Color(0xD9064E3B) else CardBackground
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, if (isAligned) SunGold.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.06f))
             ) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    if (currentTab == PlannerHudTab.SUN_AND_SHADOW) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            val distStr = if (distance >= 1000) String.format("%.2f", distance / 1000.0) else "${distance.roundToInt()}"
+                            val unitStr = if (distance >= 1000) "km" else "m"
+                            Text(
+                                text = distStr,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = MoonGlow
+                            )
+                            Text(
+                                text = unitStr,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = "· ${bearing.roundToInt()}°",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextSecondary
+                            )
+                        }
+                        val isSun = sharedState.celestialTarget == CelestialTargetType.SUN
+                        val targetCelestialStr = if (isSun) {
+                            "태양 ${String.format("%.1f", sun.azimuthDeg)}° · 고도 ${String.format("%.1f", sun.altitudeDeg)}°"
+                        } else {
+                            "달 ${String.format("%.1f", moon.azimuthDeg)}° · 고도 ${String.format("%.1f", moon.altitudeDeg)}°"
+                        }
+                        Text(
+                            text = targetCelestialStr,
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isAligned) SunGold.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.06f))
+                                .padding(horizontal = 8.dp, vertical = 3.5.dp)
                         ) {
-                            Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isAligned) SunGold else if (azDiff < 3.0) Color(0xFFF59E0B) else TextSecondary.copy(alpha = 0.4f))
+                                )
                                 Text(
-                                    text = if (shadowResult.isSunAboveHorizon) {
-                                        "👥 그림자 길이: ${String.format("%.1f", shadowResult.shadowLengthMeters)} m (배율 %.1fx)".format(shadowResult.shadowRatio)
-                                    } else {
-                                        "🌙 일몰 후 (태양이 지평선 아래에 있어 그림자 없음)"
-                                    },
-                                    fontSize = 13.sp,
+                                    text = if (isAligned) "1열 일치" else String.format("오차 %.1f°", azDiff),
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (shadowResult.isSunAboveHorizon) SunGold else TextSecondary
-                                )
-                                Text(
-                                    text = "그림자 방향: ${String.format("%.1f", shadowResult.shadowBearingDeg)}° | 피사체 높이: ${targetHeight.toInt()}m",
-                                    fontSize = 11.sp,
-                                    color = TextSecondary
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "직선거리: ${if (distance >= 1000) String.format("%.2f km", distance / 1000.0) else "${distance.roundToInt()} m"}",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MoonGlow
-                                )
-                                Text(
-                                    text = "태양 고도: ${String.format("%.1f", sun.altitudeDeg)}°",
-                                    fontSize = 11.sp,
-                                    color = if (sun.altitudeDeg > 0) SunGold else TextSecondary
+                                    color = if (isAligned) SunGold else TextPrimary
                                 )
                             }
                         }
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "직선거리: ${if (distance >= 1000) String.format("%.2f km", distance / 1000.0) else "${distance.roundToInt()} m"}",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MoonGlow
-                                )
-                                Text(
-                                    text = "조준 방위: ${String.format("%.1f", bearing)}° | 달 방위: ${String.format("%.1f", moon.azimuthDeg)}°",
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    if (!isAligned) {
-                                        Button(
-                                            onClick = alignCameraToColinear,
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = SunGold,
-                                                contentColor = NightSkyBackground
-                                            ),
-                                            shape = RoundedCornerShape(4.dp),
-                                            contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp),
-                                            modifier = Modifier.height(24.dp)
-                                        ) {
-                                            Text("🎯1열 카메라", fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                        Button(
-                                            onClick = alignTimeToMoon,
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = Color(0xFF6366F1),
-                                                contentColor = Color.White
-                                            ),
-                                            shape = RoundedCornerShape(4.dp),
-                                            contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp),
-                                            modifier = Modifier.height(24.dp)
-                                        ) {
-                                            Text("⏱️1열 시각", fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                    val statusText = if (isAligned) "🎯 3점 1열 일치!" else "각도차 ${String.format("%.1f", azDiff)}°"
-                                    val statusColor = if (isAligned) SunGold else TextSecondary
-                                    Text(
-                                        text = statusText,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = statusColor
-                                    )
-                                }
-                                Text(
-                                    text = if (isAligned) "📷 카메라 ➔ 🗼 피사체 ➔ 🌕 달" else "달 고도: ${String.format("%.1f", moon.altitudeDeg)}°",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = if (isAligned) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isAligned || moon.altitudeDeg > 0) SunGold else TextSecondary
-                                )
-                            }
+
+                        if (shadowResult.isSunAboveHorizon) {
+                            Text(
+                                text = "그림자 ${String.format("%.1f", shadowResult.shadowLengthMeters)}m (${String.format("%.1f", shadowResult.shadowRatio)}x)",
+                                fontSize = 10.5.sp,
+                                color = SunGold.copy(alpha = 0.9f)
+                            )
+                        } else {
+                            Text(
+                                text = "일몰 후",
+                                fontSize = 10.5.sp,
+                                color = TextSecondary
+                            )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // (D) 시간 이동 슬라이더 & 날짜 선택
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 📅 날짜 선택 (DatePicker) 버튼
-                    Button(
-                        onClick = openDatePicker,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B), contentColor = SunGold),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                        shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier.height(26.dp)
-                    ) {
-                        Text(
-                            text = "📅 ${today.format(DateTimeFormatter.ofPattern("M/d (E)", java.util.Locale.KOREAN))}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+            // 시간 슬라이더 & 날짜 선택 & 정렬 탐색 버튼
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     IconButton(
                         onClick = { today = today.minusDays(1); isLiveSync = false },
                         modifier = Modifier.size(24.dp)
                     ) {
-                        Text("◀", color = TextSecondary, fontSize = 10.sp)
+                        Text("◀", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF1E293B))
+                            .clickable { openDatePicker() }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "📅 ${today.format(DateTimeFormatter.ofPattern("M/d (E)", java.util.Locale.KOREAN))}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SunGold
+                        )
+                    }
+
                     IconButton(
                         onClick = { today = today.plusDays(1); isLiveSync = false },
                         modifier = Modifier.size(24.dp)
                     ) {
-                        Text("▶", color = TextSecondary, fontSize = 10.sp)
+                        Text("▶", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
-                    Spacer(modifier = Modifier.width(3.dp))
+
+                    val timeText = if (isLiveSync) {
+                        val lt = LocalTime.now(seoulZone)
+                        String.format("%02d:%02d", lt.hour, lt.minute)
+                    } else {
+                        val totalMinutes = (selectedHourFloat * 60f).roundToInt().coerceIn(0, 1439)
+                        String.format("%02d:%02d", totalMinutes / 60, totalMinutes % 60)
+                    }
+
                     Text(
-                        text = "${String.format("%02d:%02d", selectedHour, selectedMinute)}",
-                        color = TextPrimary,
+                        text = timeText,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
                     )
-                    Spacer(modifier = Modifier.width(3.dp))
+
                     TextButton(
                         onClick = {
                             val zdt = ZonedDateTime.now(seoulZone)
@@ -1540,33 +1466,40 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
                     ) {
                         Text(
-                            text = if (isLiveSync) "🟢 실시간" else "현재복귀",
-                            fontSize = 10.sp,
+                            text = if (isLiveSync) "🟢" else "현재",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = MoonGlow
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    Button(
+                        onClick = { runSearch(searchDays, selectedPhaseFilter) },
+                        colors = ButtonDefaults.buttonColors(containerColor = SunGold, contentColor = NightSkyBackground),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.height(26.dp)
+                    ) {
+                        Text(
+                            if (isSearching) "탐색중..." else "🔍 ${searchDays}일 정렬 탐색",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
 
-                Button(
-                    onClick = { runSearch(searchDays, selectedPhaseFilter) },
-                    colors = ButtonDefaults.buttonColors(containerColor = SunGold, contentColor = NightSkyBackground),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.height(26.dp)
-                ) {
-                    Text(if (isSearching) "탐색중..." else "🔍 ${searchDays}일 정렬 탐색", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
-                }
+                Slider(
+                    value = selectedHourFloat,
+                    onValueChange = {
+                        isLiveSync = false
+                        selectedHourFloat = it
+                    },
+                    valueRange = 0f..24f,
+                    colors = SliderDefaults.colors(thumbColor = SunGold, activeTrackColor = SunGold)
+                )
             }
-
-            Slider(
-                value = selectedHourFloat,
-                onValueChange = {
-                    isLiveSync = false
-                    selectedHourFloat = it
-                },
-                valueRange = 0f..24f,
-                colors = SliderDefaults.colors(thumbColor = MoonGlow, activeTrackColor = MoonSurface)
-            )
         }
     }
 
@@ -1843,6 +1776,68 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
             }
         }
     }
+}
+
+/**
+ * iOS 스타일 실시간 사용자 GPS 위치 퍽 및 지향 각도 비전 콘 마커 생성
+ */
+private fun createUserPuckMarkerIcon(
+    context: Context,
+    headingDeg: Double?
+): BitmapDrawable {
+    val density = context.resources.displayMetrics.density
+    val sizePx = (96 * density).toInt().coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val center = sizePx / 2f
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // 스마트폰 지향 각도 비전 콘 (부채꼴 광선 및 화살촉)
+    if (headingDeg != null) {
+        val coneRadius = 40f * density
+        val coneAngle = 60f
+        val startAngle = (headingDeg.toFloat() - 90f) - coneAngle / 2f
+        val oval = RectF(center - coneRadius, center - coneRadius, center + coneRadius, center + coneRadius)
+
+        paint.style = Paint.Style.FILL
+        paint.color = AndroidColor.parseColor("#440284C7")
+        canvas.drawArc(oval, startAngle, coneAngle, true, paint)
+
+        // 방향 포인터 화살촉
+        canvas.save()
+        canvas.translate(center, center)
+        canvas.rotate(headingDeg.toFloat() - 90f)
+        val arrowPath = Path().apply {
+            val arrowDist = 17f * density
+            moveTo(arrowDist + 8f * density, 0f)
+            lineTo(arrowDist, -4.5f * density)
+            lineTo(arrowDist + 2.5f * density, 0f)
+            lineTo(arrowDist, 4.5f * density)
+            close()
+        }
+        paint.color = AndroidColor.parseColor("#38BDF8")
+        canvas.drawPath(arrowPath, paint)
+        canvas.restore()
+    }
+
+    // 외곽 은은한 블루 펄스 링
+    paint.style = Paint.Style.FILL
+    paint.color = AndroidColor.parseColor("#440EA5E9")
+    canvas.drawCircle(center, center, 13f * density, paint)
+
+    // 화이트 테두리
+    paint.color = AndroidColor.WHITE
+    canvas.drawCircle(center, center, 9f * density, paint)
+
+    // 블루 코어
+    paint.color = AndroidColor.parseColor("#0284C7")
+    canvas.drawCircle(center, center, 7f * density, paint)
+
+    // 중앙 하이라이트 화이트 도트
+    paint.color = AndroidColor.WHITE
+    canvas.drawCircle(center, center, 2.5f * density, paint)
+
+    return BitmapDrawable(context.resources, bitmap)
 }
 
 /**
