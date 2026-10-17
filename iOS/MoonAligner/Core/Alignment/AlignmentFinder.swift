@@ -200,10 +200,10 @@ public enum AlignmentFinder {
                     azimuthDeg: sun.azimuthDeg,
                     altitudeDeg: sun.altitudeDeg,
                     distanceKm: 149600000.0,
+                    angularDiameterDeg: 0.53,
                     phase: .fullMoon,
-                    phaseAngleDeg: 0.0,
                     illuminationFraction: 1.0,
-                    parallacticAngleDeg: 0.0
+                    ageDays: 14.8
                 )
                 let event = AlignmentEvent(
                     date: currentDate,
@@ -262,10 +262,10 @@ public enum AlignmentFinder {
                         azimuthDeg: s.azimuthDeg,
                         altitudeDeg: s.altitudeDeg,
                         distanceKm: 149600000.0,
+                        angularDiameterDeg: 0.53,
                         phase: .fullMoon,
-                        phaseAngleDeg: 0.0,
                         illuminationFraction: 1.0,
-                        parallacticAngleDeg: 0.0
+                        ageDays: 14.8
                     )
                     return (s.azimuthDeg, s.altitudeDeg, dummyM)
                 } else {
