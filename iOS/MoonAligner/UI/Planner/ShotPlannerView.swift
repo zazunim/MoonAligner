@@ -433,6 +433,7 @@ struct PlannerMapView: UIViewRepresentable {
     @Binding var cameraPoint: GeoPoint
     @Binding var targetPoint: GeoPoint
     @Binding var pinMoveMode: PinMoveMode
+    var celestialTarget: CelestialTargetType
     var anchorMode: AlignmentAnchorMode
     var isDistanceLocked: Bool
     var lockedDistanceMeters: Double
@@ -485,6 +486,7 @@ struct PlannerMapView: UIViewRepresentable {
             let cameraPoint: GeoPoint
             let targetPoint: GeoPoint
             let anchorMode: AlignmentAnchorMode
+            let celestialTarget: CelestialTargetType
             let isAligned: Bool
             let moonAzimuth: Double
             let moonAltitude: Double
@@ -627,8 +629,9 @@ struct PlannerMapView: UIViewRepresentable {
         ) {
             activeKeys.insert(key)
             if let existing = annotationsByKey[key] {
-                if abs(existing.coordinate.latitude - coordinate.latitude) > 1e-7 ||
-                    abs(existing.coordinate.longitude - coordinate.longitude) > 1e-7 {
+                let coordChanged = abs(existing.coordinate.latitude - coordinate.latitude) > 1e-7 ||
+                                   abs(existing.coordinate.longitude - coordinate.longitude) > 1e-7
+                if coordChanged {
                     existing.coordinate = coordinate
                 }
                 existing.title = title
@@ -636,8 +639,10 @@ struct PlannerMapView: UIViewRepresentable {
                 existing.renderedImage = image
                 if let annoView = mapView.view(for: existing) {
                     annoView.image = image
-                    // 🚀 화면 픽셀 좌표 실시간 즉각 동기화 (KVO 대기 없이 슬라이더 스크러빙 시 60fps 즉시 이동 보장)
-                    annoView.center = mapView.convert(coordinate, toPointTo: mapView)
+                    // 🚀 화면 픽셀 좌표 실시간 즉각 동기화 (superview 기준 변환으로 슬라이더 스크러빙 시 60fps 오차 0 동기화)
+                    if coordChanged, let superview = annoView.superview {
+                        annoView.center = mapView.convert(coordinate, toPointTo: superview)
+                    }
                 }
             } else {
                 let anno = CustomMapAnnotation(
@@ -661,6 +666,7 @@ struct PlannerMapView: UIViewRepresentable {
                 cameraPoint: parent.cameraPoint,
                 targetPoint: parent.targetPoint,
                 anchorMode: parent.anchorMode,
+                celestialTarget: parent.celestialTarget,
                 isAligned: parent.isAligned,
                 moonAzimuth: parent.moon.azimuthDeg,
                 moonAltitude: parent.moon.altitudeDeg,
@@ -686,12 +692,22 @@ struct PlannerMapView: UIViewRepresentable {
             let camCoord = CLLocationCoordinate2D(latitude: parent.cameraPoint.latitudeDeg, longitude: parent.cameraPoint.longitudeDeg)
             let targetCoord = CLLocationCoordinate2D(latitude: parent.targetPoint.latitudeDeg, longitude: parent.targetPoint.longitudeDeg)
 
-            // 달의 위치는 항상 피사체 너머로 뻗어나가도록 동적 계산 (피사체보다 앞서지 않음)
-            let moonDist = max(parent.distance * 1.6, parent.distance + 3500.0, 6000.0)
-            let moonTip = AlignmentFinder.calculateDestinationPoint(start: parent.cameraPoint, distanceMeters: moonDist, bearingDeg: parent.moon.azimuthDeg)
+            let isSunMode = parent.celestialTarget == .sun
+            let rayDist = max(parent.distance * 1.6, parent.distance + 3500.0, 6000.0)
+
+            // 주 천체와 보조 천체의 끝점 계산 (주 천체는 카메라 기준, 보조 천체는 피사체 기준)
+            let moonTip = AlignmentFinder.calculateDestinationPoint(
+                start: parent.cameraPoint,
+                distanceMeters: rayDist,
+                bearingDeg: parent.moon.azimuthDeg
+            )
             let moonTipCoord = CLLocationCoordinate2D(latitude: moonTip.latitudeDeg, longitude: moonTip.longitudeDeg)
 
-            let sunTip = AlignmentFinder.calculateDestinationPoint(start: parent.targetPoint, distanceMeters: 5000.0, bearingDeg: parent.sun.azimuthDeg)
+            let sunTip = AlignmentFinder.calculateDestinationPoint(
+                start: isSunMode ? parent.cameraPoint : parent.targetPoint,
+                distanceMeters: isSunMode ? rayDist : 5000.0,
+                bearingDeg: parent.sun.azimuthDeg
+            )
             let sunTipCoord = CLLocationCoordinate2D(latitude: sunTip.latitudeDeg, longitude: sunTip.longitudeDeg)
 
             let riseTip = AlignmentFinder.calculateDestinationPoint(start: parent.targetPoint, distanceMeters: 4200.0, bearingDeg: parent.sunDayTimes.sunriseAzimuthDeg)
@@ -716,18 +732,35 @@ struct PlannerMapView: UIViewRepresentable {
                 targetLine.lineWidth = 6.0
                 newOverlays.append(targetLine)
 
-                // 🎯 3점 1열 정렬 시 달 광선을 굵은 황금빛 관통선으로 강조
-                var moonCoords = [camCoord, moonTipCoord]
-                let moonLine = ColoredPolyline(coordinates: &moonCoords, count: 2)
-                moonLine.color = parent.isAligned ? UIColor(hex: 0xFACC15) : UIColor(hex: 0xFDE047)
-                moonLine.lineWidth = parent.isAligned ? 7.0 : 4.5
-                newOverlays.append(moonLine)
+                if isSunMode {
+                    // ☀️ 태양 플래너 모드: 카메라 ➔ 피사체 ➔ 태양 관통선
+                    var sunCoords = [camCoord, sunTipCoord]
+                    let sunLine = ColoredPolyline(coordinates: &sunCoords, count: 2)
+                    sunLine.color = parent.isAligned ? UIColor(hex: 0xF59E0B) : UIColor(hex: 0xFBBF24)
+                    sunLine.lineWidth = parent.isAligned ? 7.0 : 4.5
+                    newOverlays.append(sunLine)
 
-                var sunCoords = [targetCoord, sunTipCoord]
-                let sunLine = ColoredPolyline(coordinates: &sunCoords, count: 2)
-                sunLine.color = UIColor(hex: 0xF59E0B)
-                sunLine.lineWidth = 5.0
-                newOverlays.append(sunLine)
+                    // 보조: 달 광선
+                    var moonCoords = [camCoord, moonTipCoord]
+                    let moonLine = ColoredPolyline(coordinates: &moonCoords, count: 2)
+                    moonLine.color = UIColor(hex: 0xFDE047, alpha: 0.7)
+                    moonLine.lineWidth = 3.5
+                    newOverlays.append(moonLine)
+                } else {
+                    // 🌕 달 플래너 모드: 카메라 ➔ 피사체 ➔ 달 관통선
+                    var moonCoords = [camCoord, moonTipCoord]
+                    let moonLine = ColoredPolyline(coordinates: &moonCoords, count: 2)
+                    moonLine.color = parent.isAligned ? UIColor(hex: 0xFACC15) : UIColor(hex: 0xFDE047)
+                    moonLine.lineWidth = parent.isAligned ? 7.0 : 4.5
+                    newOverlays.append(moonLine)
+
+                    // 보조: 태양 광선 (피사체 기준)
+                    var sunCoords = [targetCoord, sunTipCoord]
+                    let sunLine = ColoredPolyline(coordinates: &sunCoords, count: 2)
+                    sunLine.color = UIColor(hex: 0xF59E0B)
+                    sunLine.lineWidth = 4.0
+                    newOverlays.append(sunLine)
+                }
 
                 var riseCoords = [targetCoord, riseTipCoord]
                 let riseLine = ColoredPolyline(coordinates: &riseCoords, count: 2)
@@ -802,24 +835,26 @@ struct PlannerMapView: UIViewRepresentable {
                 activeKeys: &activeKeys
             )
 
-            let moonMidLat = parent.cameraPoint.latitudeDeg + (moonTip.latitudeDeg - parent.cameraPoint.latitudeDeg) * 0.45
-            let moonMidLon = parent.cameraPoint.longitudeDeg + (moonTip.longitudeDeg - parent.cameraPoint.longitudeDeg) * 0.45
-            let moonBadgeImage = MapBadgeDrawer.createTextBadge(
-                text: parent.isAligned
-                    ? "🎯 3점 1열 정렬 [📷➔🗼➔🌕] (\(Int(parent.moon.azimuthDeg))°)"
-                    : "🌕 달 궤적 (\(Int(parent.moon.azimuthDeg))° / \(String(format: "%.1f", parent.moon.altitudeDeg))°)",
-                bgColor: parent.isAligned ? UIColor(hex: 0x14532D, alpha: 0.95) : UIColor(hex: 0x1E1B4B, alpha: 0.9),
-                textColor: UIColor(hex: 0xFEF08A)
-            )
-            upsertAnnotation(
-                mapView: mapView,
-                key: "moonBadge",
-                coordinate: CLLocationCoordinate2D(latitude: moonMidLat, longitude: moonMidLon),
-                title: "달 궤적",
-                itemType: .label,
-                image: moonBadgeImage,
-                activeKeys: &activeKeys
-            )
+            if !isSunMode {
+                let moonMidLat = parent.cameraPoint.latitudeDeg + (moonTip.latitudeDeg - parent.cameraPoint.latitudeDeg) * 0.45
+                let moonMidLon = parent.cameraPoint.longitudeDeg + (moonTip.longitudeDeg - parent.cameraPoint.longitudeDeg) * 0.45
+                let moonBadgeImage = MapBadgeDrawer.createTextBadge(
+                    text: parent.isAligned
+                        ? "🎯 3점 1열 정렬 [📷➔🗼➔🌕] (\(Int(parent.moon.azimuthDeg))°)"
+                        : "🌕 달 궤적 (\(Int(parent.moon.azimuthDeg))° / \(String(format: "%.1f", parent.moon.altitudeDeg))°)",
+                    bgColor: parent.isAligned ? UIColor(hex: 0x14532D, alpha: 0.95) : UIColor(hex: 0x1E1B4B, alpha: 0.9),
+                    textColor: UIColor(hex: 0xFEF08A)
+                )
+                upsertAnnotation(
+                    mapView: mapView,
+                    key: "moonBadge",
+                    coordinate: CLLocationCoordinate2D(latitude: moonMidLat, longitude: moonMidLon),
+                    title: "달 궤적",
+                    itemType: .label,
+                    image: moonBadgeImage,
+                    activeKeys: &activeKeys
+                )
+            }
 
             // ☀️ 태양 마커
             let sunImage = MapBadgeDrawer.createCircularBadge(symbol: "☀️", bgColor: UIColor(hex: 0xD97706), size: 44, borderColor: UIColor(hex: 0xFEF08A))
@@ -833,6 +868,27 @@ struct PlannerMapView: UIViewRepresentable {
                 image: sunImage,
                 activeKeys: &activeKeys
             )
+
+            if isSunMode {
+                let sunMidLat = parent.cameraPoint.latitudeDeg + (sunTip.latitudeDeg - parent.cameraPoint.latitudeDeg) * 0.45
+                let sunMidLon = parent.cameraPoint.longitudeDeg + (sunTip.longitudeDeg - parent.cameraPoint.longitudeDeg) * 0.45
+                let sunBadgeImage = MapBadgeDrawer.createTextBadge(
+                    text: parent.isAligned
+                        ? "🎯 3점 1열 정렬 [📷➔🗼➔☀️] (\(Int(parent.sun.azimuthDeg))°)"
+                        : "☀️ 태양 궤적 (\(Int(parent.sun.azimuthDeg))° / \(String(format: "%.1f", parent.sun.altitudeDeg))°)",
+                    bgColor: parent.isAligned ? UIColor(hex: 0x9A3412, alpha: 0.95) : UIColor(hex: 0x451A03, alpha: 0.9),
+                    textColor: UIColor(hex: 0xFEF08A)
+                )
+                upsertAnnotation(
+                    mapView: mapView,
+                    key: "sunBadge",
+                    coordinate: CLLocationCoordinate2D(latitude: sunMidLat, longitude: sunMidLon),
+                    title: "태양 궤적",
+                    itemType: .label,
+                    image: sunBadgeImage,
+                    activeKeys: &activeKeys
+                )
+            }
 
             // 🌅 일출 & 🌇 일몰 마커 (시각 및 방위각 콜아웃/배너 완벽 지원)
             let riseImage = MapBadgeDrawer.createCircularBadge(symbol: "🌅", bgColor: UIColor(hex: 0xEA580C), size: 36)
@@ -1170,6 +1226,7 @@ public struct ShotPlannerView: View {
                     cameraPoint: $sharedState.cameraPoint,
                     targetPoint: $sharedState.targetPoint,
                     pinMoveMode: $sharedState.pinMoveMode,
+                    celestialTarget: sharedState.celestialTarget,
                     anchorMode: sharedState.anchorMode,
                     isDistanceLocked: sharedState.isDistanceLockedToCalculator,
                     lockedDistanceMeters: sharedState.calculatorRequiredDistance,

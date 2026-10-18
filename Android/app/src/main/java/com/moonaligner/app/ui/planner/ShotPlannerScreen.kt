@@ -712,61 +712,17 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                     }
                     mapView.overlays.add(midBadge)
 
-                    // (B) 달 방향선 (선명한 달빛 황금색 빔 + 🌕 달 배지 마커)
-                    val moonDist = kotlin.math.max(distance * 1.6, distance + 3500.0).coerceAtLeast(6000.0)
-                    val moonTip = AlignmentFinder.calculateDestinationPoint(cameraPoint, moonDist, moon.azimuthDeg)
-                    val moonEndOsm = OsmGeoPoint(moonTip.latitudeDeg, moonTip.longitudeDeg)
-                    val moonRay = Polyline().apply {
-                        setPoints(listOf(camOsm, moonEndOsm))
-                        outlinePaint.color = if (isAligned) AndroidColor.parseColor("#FACC15") else AndroidColor.parseColor("#FDE047")
-                        outlinePaint.strokeWidth = if (isAligned) 8f else 5f
-                    }
-                    mapView.overlays.add(moonRay)
+                    val isSun = sharedState.celestialTarget == CelestialTargetType.SUN
+                    val rayDist = kotlin.math.max(distance * 1.6, distance + 3500.0).coerceAtLeast(6000.0)
 
-                    val moonMarker = Marker(mapView).apply {
-                        position = moonEndOsm
-                        icon = createCircularMarkerIcon(
-                            context = context,
-                            symbol = moon.phase.emoji,
-                            bgColor = AndroidColor.parseColor("#1E1B4B"),
-                            sizeDp = 44,
-                            borderColor = AndroidColor.parseColor("#FDE047")
-                        )
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        title = "🌕 현재 달 (${moon.phase.displayName})"
-                        snippet = "고도: ${String.format("%.1f", moon.altitudeDeg)}° | 방위각: ${moon.azimuthDeg.roundToInt()}°"
-                        setOnMarkerClickListener { marker, _ ->
-                            marker.showInfoWindow()
-                            selectedMarkerMessage = "${marker.title} • ${marker.snippet}"
-                            true
-                        }
-                    }
-                    mapView.overlays.add(moonMarker)
-
-                    val moonMidLat = cameraPoint.latitudeDeg + (moonTip.latitudeDeg - cameraPoint.latitudeDeg) * 0.45
-                    val moonMidLon = cameraPoint.longitudeDeg + (moonTip.longitudeDeg - cameraPoint.longitudeDeg) * 0.45
-                    val moonLabel = Marker(mapView).apply {
-                        position = OsmGeoPoint(moonMidLat, moonMidLon)
-                        icon = createTextBadgeIcon(
-                            context,
-                            if (isAligned) "🎯 3점 1열 정렬 [📷➔🗼➔🌕] (${String.format("%.0f", moon.azimuthDeg)}°)"
-                            else "🌕 달 궤적 (${String.format("%.0f", moon.azimuthDeg)}° / ${String.format("%.1f", moon.altitudeDeg)}°)",
-                            bgColor = if (isAligned) AndroidColor.parseColor("#E614532D") else AndroidColor.parseColor("#E61E1B4B"),
-                            textColor = AndroidColor.parseColor("#FEF08A")
-                        )
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        setOnMarkerClickListener { _, _ -> false }
-                    }
-                    mapView.overlays.add(moonLabel)
-
-                    // (C) 태양 & 일출/일몰 광선
-                    if (showSunRays) {
-                        val sunTip = AlignmentFinder.calculateDestinationPoint(targetPoint, 5000.0, sun.azimuthDeg)
+                    if (isSun) {
+                        // ☀️ 태양 플래너 모드: 카메라 ➔ 피사체 ➔ 태양 관통선
+                        val sunTip = AlignmentFinder.calculateDestinationPoint(cameraPoint, rayDist, sun.azimuthDeg)
                         val sunEndOsm = OsmGeoPoint(sunTip.latitudeDeg, sunTip.longitudeDeg)
                         val sunRay = Polyline().apply {
-                            setPoints(listOf(targetOsm, sunEndOsm))
-                            outlinePaint.color = AndroidColor.parseColor("#F59E0B")
-                            outlinePaint.strokeWidth = 5f
+                            setPoints(listOf(camOsm, sunEndOsm))
+                            outlinePaint.color = if (isAligned) AndroidColor.parseColor("#F59E0B") else AndroidColor.parseColor("#FBBF24")
+                            outlinePaint.strokeWidth = if (isAligned) 8f else 5f
                         }
                         mapView.overlays.add(sunRay)
 
@@ -790,52 +746,177 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                         }
                         mapView.overlays.add(sunMarker)
 
-                        val riseTip = AlignmentFinder.calculateDestinationPoint(targetPoint, 4200.0, sunDayTimes.sunriseAzimuthDeg)
-                        val riseEndOsm = OsmGeoPoint(riseTip.latitudeDeg, riseTip.longitudeDeg)
-                        val riseRay = Polyline().apply {
-                            setPoints(listOf(targetOsm, riseEndOsm))
-                            outlinePaint.color = AndroidColor.parseColor("#FF7043")
-                            outlinePaint.strokeWidth = 3f
-                        }
-                        mapView.overlays.add(riseRay)
-
-                        val riseMarker = Marker(mapView).apply {
-                            position = riseEndOsm
-                            icon = createCircularMarkerIcon(context, "🌅", AndroidColor.parseColor("#EA580C"), sizeDp = 36)
+                        val sunMidLat = cameraPoint.latitudeDeg + (sunTip.latitudeDeg - cameraPoint.latitudeDeg) * 0.45
+                        val sunMidLon = cameraPoint.longitudeDeg + (sunTip.longitudeDeg - cameraPoint.longitudeDeg) * 0.45
+                        val sunLabel = Marker(mapView).apply {
+                            position = OsmGeoPoint(sunMidLat, sunMidLon)
+                            icon = createTextBadgeIcon(
+                                context,
+                                if (isAligned) "🎯 3점 1열 정렬 [📷➔🗼➔☀️] (${String.format("%.0f", sun.azimuthDeg)}°)"
+                                else "☀️ 태양 궤적 (${String.format("%.0f", sun.azimuthDeg)}° / ${String.format("%.1f", sun.altitudeDeg)}°)",
+                                bgColor = if (isAligned) AndroidColor.parseColor("#E69A3412") else AndroidColor.parseColor("#E6451A03"),
+                                textColor = AndroidColor.parseColor("#FEF08A")
+                            )
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                            title = "🌅 오늘 일출 시각: ${sunDayTimes.sunriseTimeStr}"
-                            snippet = "일출 방위각: ${sunDayTimes.sunriseAzimuthDeg.roundToInt()}°"
+                            setOnMarkerClickListener { _, _ -> false }
+                        }
+                        mapView.overlays.add(sunLabel)
+
+                        // 보조: 달 광선
+                        val moonTip = AlignmentFinder.calculateDestinationPoint(cameraPoint, rayDist, moon.azimuthDeg)
+                        val moonEndOsm = OsmGeoPoint(moonTip.latitudeDeg, moonTip.longitudeDeg)
+                        val moonRay = Polyline().apply {
+                            setPoints(listOf(camOsm, moonEndOsm))
+                            outlinePaint.color = AndroidColor.parseColor("#AAFEF08A")
+                            outlinePaint.strokeWidth = 3.5f
+                        }
+                        mapView.overlays.add(moonRay)
+
+                        val moonMarker = Marker(mapView).apply {
+                            position = moonEndOsm
+                            icon = createCircularMarkerIcon(
+                                context = context,
+                                symbol = moon.phase.emoji,
+                                bgColor = AndroidColor.parseColor("#1E1B4B"),
+                                sizeDp = 40,
+                                borderColor = AndroidColor.parseColor("#FDE047")
+                            )
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            title = "🌕 현재 달 (${moon.phase.displayName})"
+                            snippet = "고도: ${String.format("%.1f", moon.altitudeDeg)}° | 방위각: ${moon.azimuthDeg.roundToInt()}°"
                             setOnMarkerClickListener { marker, _ ->
                                 marker.showInfoWindow()
                                 selectedMarkerMessage = "${marker.title} • ${marker.snippet}"
                                 true
                             }
                         }
-                        mapView.overlays.add(riseMarker)
-
-                        val setTip = AlignmentFinder.calculateDestinationPoint(targetPoint, 4200.0, sunDayTimes.sunsetAzimuthDeg)
-                        val setEndOsm = OsmGeoPoint(setTip.latitudeDeg, setTip.longitudeDeg)
-                        val setRay = Polyline().apply {
-                            setPoints(listOf(targetOsm, setEndOsm))
-                            outlinePaint.color = AndroidColor.parseColor("#AB47BC")
-                            outlinePaint.strokeWidth = 3f
+                        mapView.overlays.add(moonMarker)
+                    } else {
+                        // 🌕 달 플래너 모드: 카메라 ➔ 피사체 ➔ 달 관통선
+                        val moonTip = AlignmentFinder.calculateDestinationPoint(cameraPoint, rayDist, moon.azimuthDeg)
+                        val moonEndOsm = OsmGeoPoint(moonTip.latitudeDeg, moonTip.longitudeDeg)
+                        val moonRay = Polyline().apply {
+                            setPoints(listOf(camOsm, moonEndOsm))
+                            outlinePaint.color = if (isAligned) AndroidColor.parseColor("#FACC15") else AndroidColor.parseColor("#FDE047")
+                            outlinePaint.strokeWidth = if (isAligned) 8f else 5f
                         }
-                        mapView.overlays.add(setRay)
+                        mapView.overlays.add(moonRay)
 
-                        val setMarker = Marker(mapView).apply {
-                            position = setEndOsm
-                            icon = createCircularMarkerIcon(context, "🌇", AndroidColor.parseColor("#9333EA"), sizeDp = 36)
+                        val moonMarker = Marker(mapView).apply {
+                            position = moonEndOsm
+                            icon = createCircularMarkerIcon(
+                                context = context,
+                                symbol = moon.phase.emoji,
+                                bgColor = AndroidColor.parseColor("#1E1B4B"),
+                                sizeDp = 44,
+                                borderColor = AndroidColor.parseColor("#FDE047")
+                            )
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                            title = "🌇 오늘 일몰 시각: ${sunDayTimes.sunsetTimeStr}"
-                            snippet = "일몰 방위각: ${sunDayTimes.sunsetAzimuthDeg.roundToInt()}°"
+                            title = "🌕 현재 달 (${moon.phase.displayName})"
+                            snippet = "고도: ${String.format("%.1f", moon.altitudeDeg)}° | 방위각: ${moon.azimuthDeg.roundToInt()}°"
                             setOnMarkerClickListener { marker, _ ->
                                 marker.showInfoWindow()
                                 selectedMarkerMessage = "${marker.title} • ${marker.snippet}"
                                 true
                             }
                         }
-                        mapView.overlays.add(setMarker)
+                        mapView.overlays.add(moonMarker)
+
+                        val moonMidLat = cameraPoint.latitudeDeg + (moonTip.latitudeDeg - cameraPoint.latitudeDeg) * 0.45
+                        val moonMidLon = cameraPoint.longitudeDeg + (moonTip.longitudeDeg - cameraPoint.longitudeDeg) * 0.45
+                        val moonLabel = Marker(mapView).apply {
+                            position = OsmGeoPoint(moonMidLat, moonMidLon)
+                            icon = createTextBadgeIcon(
+                                context,
+                                if (isAligned) "🎯 3점 1열 정렬 [📷➔🗼➔🌕] (${String.format("%.0f", moon.azimuthDeg)}°)"
+                                else "🌕 달 궤적 (${String.format("%.0f", moon.azimuthDeg)}° / ${String.format("%.1f", moon.altitudeDeg)}°)",
+                                bgColor = if (isAligned) AndroidColor.parseColor("#E614532D") else AndroidColor.parseColor("#E61E1B4B"),
+                                textColor = AndroidColor.parseColor("#FEF08A")
+                            )
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            setOnMarkerClickListener { _, _ -> false }
+                        }
+                        mapView.overlays.add(moonLabel)
+
+                        // 보조: 태양 광선 (피사체 기준)
+                        if (showSunRays) {
+                            val sunTip = AlignmentFinder.calculateDestinationPoint(targetPoint, 5000.0, sun.azimuthDeg)
+                            val sunEndOsm = OsmGeoPoint(sunTip.latitudeDeg, sunTip.longitudeDeg)
+                            val sunRay = Polyline().apply {
+                                setPoints(listOf(targetOsm, sunEndOsm))
+                                outlinePaint.color = AndroidColor.parseColor("#F59E0B")
+                                outlinePaint.strokeWidth = 4f
+                            }
+                            mapView.overlays.add(sunRay)
+
+                            val sunMarker = Marker(mapView).apply {
+                                position = sunEndOsm
+                                icon = createCircularMarkerIcon(
+                                    context = context,
+                                    symbol = "☀️",
+                                    bgColor = AndroidColor.parseColor("#D97706"),
+                                    sizeDp = 44,
+                                    borderColor = AndroidColor.parseColor("#FEF08A")
+                                )
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                                title = "☀️ 현재 태양"
+                                snippet = "고도: ${String.format("%.1f", sun.altitudeDeg)}° | 방위각: ${sun.azimuthDeg.roundToInt()}°"
+                                setOnMarkerClickListener { marker, _ ->
+                                    marker.showInfoWindow()
+                                    selectedMarkerMessage = "${marker.title} • ${marker.snippet}"
+                                    true
+                                }
+                            }
+                            mapView.overlays.add(sunMarker)
+                        }
                     }
+
+                    // (C) 일출/일몰 광선 (항상 피사체 기준 표시)
+                    val riseTip = AlignmentFinder.calculateDestinationPoint(targetPoint, 4200.0, sunDayTimes.sunriseAzimuthDeg)
+                    val riseEndOsm = OsmGeoPoint(riseTip.latitudeDeg, riseTip.longitudeDeg)
+                    val riseRay = Polyline().apply {
+                        setPoints(listOf(targetOsm, riseEndOsm))
+                        outlinePaint.color = AndroidColor.parseColor("#FF7043")
+                        outlinePaint.strokeWidth = 3f
+                    }
+                    mapView.overlays.add(riseRay)
+
+                    val riseMarker = Marker(mapView).apply {
+                        position = riseEndOsm
+                        icon = createCircularMarkerIcon(context, "🌅", AndroidColor.parseColor("#EA580C"), sizeDp = 36)
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        title = "🌅 오늘 일출 시각: ${sunDayTimes.sunriseTimeStr}"
+                        snippet = "일출 방위각: ${sunDayTimes.sunriseAzimuthDeg.roundToInt()}°"
+                        setOnMarkerClickListener { marker, _ ->
+                            marker.showInfoWindow()
+                            selectedMarkerMessage = "${marker.title} • ${marker.snippet}"
+                            true
+                        }
+                    }
+                    mapView.overlays.add(riseMarker)
+
+                    val setTip = AlignmentFinder.calculateDestinationPoint(targetPoint, 4200.0, sunDayTimes.sunsetAzimuthDeg)
+                    val setEndOsm = OsmGeoPoint(setTip.latitudeDeg, setTip.longitudeDeg)
+                    val setRay = Polyline().apply {
+                        setPoints(listOf(targetOsm, setEndOsm))
+                        outlinePaint.color = AndroidColor.parseColor("#AB47BC")
+                        outlinePaint.strokeWidth = 3f
+                    }
+                    mapView.overlays.add(setRay)
+
+                    val setMarker = Marker(mapView).apply {
+                        position = setEndOsm
+                        icon = createCircularMarkerIcon(context, "🌇", AndroidColor.parseColor("#9333EA"), sizeDp = 36)
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        title = "🌇 오늘 일몰 시각: ${sunDayTimes.sunsetTimeStr}"
+                        snippet = "일몰 방위각: ${sunDayTimes.sunsetAzimuthDeg.roundToInt()}°"
+                        setOnMarkerClickListener { marker, _ ->
+                            marker.showInfoWindow()
+                            selectedMarkerMessage = "${marker.title} • ${marker.snippet}"
+                            true
+                        }
+                    }
+                    mapView.overlays.add(setMarker)
 
                     // (D) SunOnTrack 실시간 그림자 투영
                     if (showShadow && shadowResult.isSunAboveHorizon && shadowResult.shadowTipPoint != null) {
