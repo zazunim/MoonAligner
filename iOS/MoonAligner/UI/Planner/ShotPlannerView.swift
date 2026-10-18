@@ -233,6 +233,173 @@ public class ShotPlannerLocationManager: NSObject, ObservableObject, CLLocationM
     }
 }
 
+// MARK: - Real-Time 120fps Synchronous Overlay Canvas View
+final class OverlayCanvasView: UIView {
+    weak var mapView: MKMapView?
+
+    var cameraCoord: CLLocationCoordinate2D?
+    var targetCoord: CLLocationCoordinate2D?
+    var moonTipCoord: CLLocationCoordinate2D?
+    var sunTipCoord: CLLocationCoordinate2D?
+    var riseTipCoord: CLLocationCoordinate2D?
+    var setTipCoord: CLLocationCoordinate2D?
+    var shadowTipCoord: CLLocationCoordinate2D?
+    var userCoord: CLLocationCoordinate2D?
+
+    var isSunMode: Bool = false
+    var isAligned: Bool = false
+    var anchorMode: AlignmentAnchorMode = .cameraFixed
+    var distanceMeters: Double = 0.0
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isUserInteractionEnabled = false
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        backgroundColor = .clear
+        isUserInteractionEnabled = false
+    }
+
+    override func draw(_ rect: CGRect) {
+        guard let mapView = mapView, let ctx = UIGraphicsGetCurrentContext() else { return }
+
+        // 1. 촬영 거리 반경 원 (대시 원)
+        if let cam = cameraCoord, let target = targetCoord, distanceMeters > 5.0 {
+            let centerCoord = (anchorMode == .cameraFixed) ? cam : target
+            let centerPt = mapView.convert(centerCoord, toPointTo: self)
+
+            let centerGeo = GeoPoint(latitudeDeg: centerCoord.latitude, longitudeDeg: centerCoord.longitude)
+            let edgeGeo = AlignmentFinder.calculateDestinationPoint(start: centerGeo, distanceMeters: distanceMeters, bearingDeg: 90.0)
+            let edgePt = mapView.convert(CLLocationCoordinate2D(latitude: edgeGeo.latitudeDeg, longitude: edgeGeo.longitudeDeg), toPointTo: self)
+            let radius = hypot(edgePt.x - centerPt.x, edgePt.y - centerPt.y)
+
+            if radius > 2.0 && radius < 20000.0 {
+                ctx.saveGState()
+                ctx.setStrokeColor(UIColor(hex: 0x38BDF8, alpha: 0.65).cgColor)
+                ctx.setFillColor(UIColor(hex: 0x38BDF8, alpha: 0.04).cgColor)
+                ctx.setLineWidth(2.0)
+                let dashes: [CGFloat] = [8, 6]
+                ctx.setLineDash(phase: 0, lengths: dashes)
+                ctx.addArc(center: centerPt, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: true)
+                ctx.drawPath(using: .fillStroke)
+                ctx.restoreGState()
+            }
+        }
+
+        // 2. 피사체 조준선 (카메라 ➔ 피사체, 오렌지 라인)
+        if let cam = cameraCoord, let target = targetCoord {
+            let p1 = mapView.convert(cam, toPointTo: self)
+            let p2 = mapView.convert(target, toPointTo: self)
+            ctx.saveGState()
+            ctx.setStrokeColor(UIColor(red: 1.0, green: 0.34, blue: 0.13, alpha: 1.0).cgColor)
+            ctx.setLineWidth(6.0)
+            ctx.setLineCap(.round)
+            ctx.strokeLineSegments(between: [p1, p2])
+            ctx.restoreGState()
+        }
+
+        // 3. 천체 궤적선 (달 & 태양)
+        if isSunMode {
+            // ☀️ 태양 플래너 모드: 카메라 ➔ 피사체 ➔ 태양 관통선이 메인
+            if let cam = cameraCoord, let sunTip = sunTipCoord {
+                let p1 = mapView.convert(cam, toPointTo: self)
+                let p2 = mapView.convert(sunTip, toPointTo: self)
+                ctx.saveGState()
+                let color = isAligned ? UIColor(hex: 0xF59E0B) : UIColor(hex: 0xFBBF24)
+                ctx.setStrokeColor(color.cgColor)
+                ctx.setLineWidth(isAligned ? 7.0 : 4.5)
+                ctx.setLineCap(.round)
+                ctx.strokeLineSegments(between: [p1, p2])
+                ctx.restoreGState()
+            }
+            // 보조: 달 광선
+            if let cam = cameraCoord, let moonTip = moonTipCoord {
+                let p1 = mapView.convert(cam, toPointTo: self)
+                let p2 = mapView.convert(moonTip, toPointTo: self)
+                ctx.saveGState()
+                ctx.setStrokeColor(UIColor(hex: 0xFDE047, alpha: 0.7).cgColor)
+                ctx.setLineWidth(3.5)
+                ctx.setLineCap(.round)
+                ctx.strokeLineSegments(between: [p1, p2])
+                ctx.restoreGState()
+            }
+        } else {
+            // 🌕 달 플래너 모드: 카메라 ➔ 피사체 ➔ 달 관통선이 메인
+            if let cam = cameraCoord, let moonTip = moonTipCoord {
+                let p1 = mapView.convert(cam, toPointTo: self)
+                let p2 = mapView.convert(moonTip, toPointTo: self)
+                ctx.saveGState()
+                let color = isAligned ? UIColor(hex: 0xFACC15) : UIColor(hex: 0xFDE047)
+                ctx.setStrokeColor(color.cgColor)
+                ctx.setLineWidth(isAligned ? 7.0 : 4.5)
+                ctx.setLineCap(.round)
+                ctx.strokeLineSegments(between: [p1, p2])
+                ctx.restoreGState()
+            }
+            // 보조: 태양 광선 (피사체 기준)
+            if let target = targetCoord, let sunTip = sunTipCoord {
+                let p1 = mapView.convert(target, toPointTo: self)
+                let p2 = mapView.convert(sunTip, toPointTo: self)
+                ctx.saveGState()
+                ctx.setStrokeColor(UIColor(hex: 0xF59E0B).cgColor)
+                ctx.setLineWidth(4.0)
+                ctx.setLineCap(.round)
+                ctx.strokeLineSegments(between: [p1, p2])
+                ctx.restoreGState()
+            }
+        }
+
+        // 4. 일출 & 일몰 광선 (피사체 기준)
+        if let target = targetCoord, let riseTip = riseTipCoord {
+            let p1 = mapView.convert(target, toPointTo: self)
+            let p2 = mapView.convert(riseTip, toPointTo: self)
+            ctx.saveGState()
+            ctx.setStrokeColor(UIColor(hex: 0xFF7043).cgColor)
+            ctx.setLineWidth(3.0)
+            ctx.setLineCap(.round)
+            ctx.strokeLineSegments(between: [p1, p2])
+            ctx.restoreGState()
+        }
+        if let target = targetCoord, let setTip = setTipCoord {
+            let p1 = mapView.convert(target, toPointTo: self)
+            let p2 = mapView.convert(setTip, toPointTo: self)
+            ctx.saveGState()
+            ctx.setStrokeColor(UIColor(hex: 0xAB47BC).cgColor)
+            ctx.setLineWidth(3.0)
+            ctx.setLineCap(.round)
+            ctx.strokeLineSegments(between: [p1, p2])
+            ctx.restoreGState()
+        }
+
+        // 5. 그림자 투영선
+        if let target = targetCoord, let shadowTip = shadowTipCoord {
+            let p1 = mapView.convert(target, toPointTo: self)
+            let p2 = mapView.convert(shadowTip, toPointTo: self)
+            ctx.saveGState()
+            ctx.setStrokeColor(UIColor(hex: 0x0F172A, alpha: 0.75).cgColor)
+            ctx.setLineWidth(16.0)
+            ctx.setLineCap(.round)
+            ctx.strokeLineSegments(between: [p1, p2])
+            ctx.restoreGState()
+        }
+
+        // 6. 현장 삼각대 위치 유도선 (내 위치 ➔ 계획된 카메라 핀 연결)
+        if let uCoord = userCoord, let cam = cameraCoord {
+            let p1 = mapView.convert(uCoord, toPointTo: self)
+            let p2 = mapView.convert(cam, toPointTo: self)
+            ctx.saveGState()
+            ctx.setStrokeColor(UIColor(hex: 0x38BDF8).cgColor)
+            ctx.setLineWidth(4.0)
+            ctx.setLineCap(.round)
+            ctx.strokeLineSegments(between: [p1, p2])
+            ctx.restoreGState()
+        }
+    }
+}
+
 // MARK: - Custom Polyline with Color & Width
 class ColoredPolyline: MKPolyline {
     var color: UIColor = .white
@@ -465,6 +632,12 @@ struct PlannerMapView: UIViewRepresentable {
         let region = MKCoordinateRegion(center: initialCoord, span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08))
         mapView.setRegion(region, animated: false)
 
+        let canvas = OverlayCanvasView(frame: mapView.bounds)
+        canvas.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        canvas.mapView = mapView
+        mapView.addSubview(canvas)
+        context.coordinator.overlayCanvasView = canvas
+
         context.coordinator.setupGestures(mapView: mapView)
         return mapView
     }
@@ -482,6 +655,11 @@ struct PlannerMapView: UIViewRepresentable {
     }
 
     class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
+        weak var overlayCanvasView: OverlayCanvasView?
+
+        func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+            overlayCanvasView?.setNeedsDisplay()
+        }
         struct GeometrySnapshot: Equatable {
             let cameraPoint: GeoPoint
             let targetPoint: GeoPoint
@@ -716,88 +894,41 @@ struct PlannerMapView: UIViewRepresentable {
             let setTip = AlignmentFinder.calculateDestinationPoint(start: parent.targetPoint, distanceMeters: 4200.0, bearingDeg: parent.sunDayTimes.sunsetAzimuthDeg)
             let setTipCoord = CLLocationCoordinate2D(latitude: setTip.latitudeDeg, longitude: setTip.longitudeDeg)
 
-            // 선(Overlay)은 기하학적 위치/각도가 실제로 바뀌었을 때만 갱신
-            if currentGeometry != lastGeometrySnapshot {
-                lastGeometrySnapshot = currentGeometry
-                let oldOverlays = mapView.overlays
-                var newOverlays: [MKOverlay] = []
+            // 1. 기존 MapKit 벡터 타일 오버레이가 남아있다면 모두 제거 (실시간 스크러빙 시 고스트 선 잔상 영구 박멸)
+            if !mapView.overlays.isEmpty {
+                mapView.removeOverlays(mapView.overlays)
+            }
 
-                let circleCenter = parent.anchorMode == .cameraFixed ? camCoord : targetCoord
-                let radiusCircle = MKCircle(center: circleCenter, radius: max(10.0, parent.distance))
-                newOverlays.append(radiusCircle)
-
-                var targetCoords = [camCoord, targetCoord]
-                let targetLine = ColoredPolyline(coordinates: &targetCoords, count: 2)
-                targetLine.color = UIColor(red: 1.0, green: 0.34, blue: 0.13, alpha: 1.0)
-                targetLine.lineWidth = 6.0
-                newOverlays.append(targetLine)
-
-                if isSunMode {
-                    // ☀️ 태양 플래너 모드: 카메라 ➔ 피사체 ➔ 태양 관통선
-                    var sunCoords = [camCoord, sunTipCoord]
-                    let sunLine = ColoredPolyline(coordinates: &sunCoords, count: 2)
-                    sunLine.color = parent.isAligned ? UIColor(hex: 0xF59E0B) : UIColor(hex: 0xFBBF24)
-                    sunLine.lineWidth = parent.isAligned ? 7.0 : 4.5
-                    newOverlays.append(sunLine)
-
-                    // 보조: 달 광선
-                    var moonCoords = [camCoord, moonTipCoord]
-                    let moonLine = ColoredPolyline(coordinates: &moonCoords, count: 2)
-                    moonLine.color = UIColor(hex: 0xFDE047, alpha: 0.7)
-                    moonLine.lineWidth = 3.5
-                    newOverlays.append(moonLine)
-                } else {
-                    // 🌕 달 플래너 모드: 카메라 ➔ 피사체 ➔ 달 관통선
-                    var moonCoords = [camCoord, moonTipCoord]
-                    let moonLine = ColoredPolyline(coordinates: &moonCoords, count: 2)
-                    moonLine.color = parent.isAligned ? UIColor(hex: 0xFACC15) : UIColor(hex: 0xFDE047)
-                    moonLine.lineWidth = parent.isAligned ? 7.0 : 4.5
-                    newOverlays.append(moonLine)
-
-                    // 보조: 태양 광선 (피사체 기준)
-                    var sunCoords = [targetCoord, sunTipCoord]
-                    let sunLine = ColoredPolyline(coordinates: &sunCoords, count: 2)
-                    sunLine.color = UIColor(hex: 0xF59E0B)
-                    sunLine.lineWidth = 4.0
-                    newOverlays.append(sunLine)
+            // 2. 120fps 실시간 동기화 오버레이 캔버스에 최신 좌표 및 기하 정보 전달
+            let canvas = overlayCanvasView ?? (mapView.subviews.compactMap { $0 as? OverlayCanvasView }.first)
+            if let canvas = canvas {
+                overlayCanvasView = canvas
+                if let ac = mapView.subviews.first(where: { String(describing: type(of: $0)).contains("AnnotationContainer") }) {
+                    mapView.insertSubview(canvas, belowSubview: ac)
                 }
 
-                var riseCoords = [targetCoord, riseTipCoord]
-                let riseLine = ColoredPolyline(coordinates: &riseCoords, count: 2)
-                riseLine.color = UIColor(hex: 0xFF7043)
-                riseLine.lineWidth = 3.0
-                newOverlays.append(riseLine)
-
-                var setCoords = [targetCoord, setTipCoord]
-                let setLine = ColoredPolyline(coordinates: &setCoords, count: 2)
-                setLine.color = UIColor(hex: 0xAB47BC)
-                setLine.lineWidth = 3.0
-                newOverlays.append(setLine)
-
+                canvas.cameraCoord = camCoord
+                canvas.targetCoord = targetCoord
+                canvas.moonTipCoord = moonTipCoord
+                canvas.sunTipCoord = sunTipCoord
+                canvas.riseTipCoord = riseTipCoord
+                canvas.setTipCoord = setTipCoord
                 if parent.shadow.isSunAboveHorizon, let tip = parent.shadow.shadowTipPoint {
-                    let shadowTipCoord = CLLocationCoordinate2D(latitude: tip.latitudeDeg, longitude: tip.longitudeDeg)
-                    var shadowCoords = [targetCoord, shadowTipCoord]
-                    let shadowLine = ColoredPolyline(coordinates: &shadowCoords, count: 2)
-                    shadowLine.color = UIColor(hex: 0x0F172A, alpha: 0.75)
-                    shadowLine.lineWidth = 16.0
-                    newOverlays.append(shadowLine)
+                    canvas.shadowTipCoord = CLLocationCoordinate2D(latitude: tip.latitudeDeg, longitude: tip.longitudeDeg)
+                } else {
+                    canvas.shadowTipCoord = nil
                 }
-
-                // 현장 삼각대 위치 유도선 (내 위치 ➔ 계획된 카메라 핀 연결)
                 if let uLoc = parent.userLocation {
-                    let uCoord = CLLocationCoordinate2D(latitude: uLoc.latitudeDeg, longitude: uLoc.longitudeDeg)
                     let distToCam = AlignmentFinder.calculateDistanceMeters(p1: uLoc, p2: parent.cameraPoint)
-                    if distToCam > 3.0 {
-                        var guideCoords = [uCoord, camCoord]
-                        let guideLine = ColoredPolyline(coordinates: &guideCoords, count: 2)
-                        guideLine.color = UIColor(hex: 0x38BDF8)
-                        guideLine.lineWidth = 4.0
-                        newOverlays.append(guideLine)
-                    }
+                    canvas.userCoord = (distToCam > 3.0) ? CLLocationCoordinate2D(latitude: uLoc.latitudeDeg, longitude: uLoc.longitudeDeg) : nil
+                } else {
+                    canvas.userCoord = nil
                 }
-
-                mapView.addOverlays(newOverlays)
-                mapView.removeOverlays(oldOverlays)
+                canvas.isSunMode = isSunMode
+                canvas.isAligned = parent.isAligned
+                canvas.anchorMode = parent.anchorMode
+                canvas.distanceMeters = max(10.0, parent.distance)
+                canvas.setNeedsDisplay()
             }
 
             lastAnnotationSnapshot = currentAnnotationSnap

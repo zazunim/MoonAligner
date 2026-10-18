@@ -3,7 +3,7 @@
 > *Smart Shot Planner & FOV Compressor for Moon & Sun Landmark Alignments*
 
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS-blue.svg)](https://github.com/zazunim/MoonAligner)
-[![Latest Release](https://img.shields.io/badge/Release-v1.2.3-gold.svg)](https://github.com/zazunim/MoonAligner/releases)
+[![Latest Release](https://img.shields.io/badge/Release-v1.2.4-gold.svg)](https://github.com/zazunim/MoonAligner/releases)
 [![Language](https://img.shields.io/badge/Kotlin-Compose-purple.svg)](Android/)
 [![Language](https://img.shields.io/badge/Swift-SwiftUI-orange.svg)](iOS/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -24,8 +24,8 @@
 
 | 플랫폼 | 설치 방법 | 다운로드 링크 |
 | :--- | :--- | :--- |
-| **Android** | 스마트폰에서 다운로드 후 바로 설치 (사이드로딩) | [📥 최신 MoonAligner-v1.2.3.apk 다운로드](https://github.com/zazunim/MoonAligner/releases/latest) |
-| **iOS (iPhone)** | Xcode 소스 빌드 또는 AltStore / Sideloadly 설치 | [📦 최신 iOS 소스 패키지 (v1.2.3)](https://github.com/zazunim/MoonAligner/releases/latest) |
+| **Android** | 스마트폰에서 다운로드 후 바로 설치 (사이드로딩) | [📥 최신 MoonAligner-v1.2.4.apk 다운로드](https://github.com/zazunim/MoonAligner/releases/latest) |
+| **iOS (iPhone)** | Xcode 소스 빌드 또는 AltStore / Sideloadly 설치 | [📦 최신 iOS 소스 패키지 (v1.2.4)](https://github.com/zazunim/MoonAligner/releases/latest) |
 
 ---
 
