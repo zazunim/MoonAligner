@@ -253,11 +253,11 @@ enum MapItemType {
     case label
 }
 
-class CustomMapAnnotation: NSObject, MKAnnotation {
+final class CustomMapAnnotation: NSObject, MKAnnotation {
     let key: String
-    dynamic var coordinate: CLLocationCoordinate2D
-    var title: String?
-    var subtitle: String?
+    @objc dynamic var coordinate: CLLocationCoordinate2D
+    @objc dynamic var title: String?
+    @objc dynamic var subtitle: String?
     var itemType: MapItemType
     var renderedImage: UIImage?
 
@@ -486,11 +486,11 @@ struct PlannerMapView: UIViewRepresentable {
             let targetPoint: GeoPoint
             let anchorMode: AlignmentAnchorMode
             let isAligned: Bool
-            let moonAzDeci: Int
-            let moonAltDeci: Int
-            let sunAzDeci: Int
-            let sunAltDeci: Int
-            let targetHeightInt: Int
+            let moonAzimuth: Double
+            let moonAltitude: Double
+            let sunAzimuth: Double
+            let sunAltitude: Double
+            let targetHeight: Double
             let sunriseStr: String
             let sunsetStr: String
             let userLocLatE4: Int
@@ -636,6 +636,8 @@ struct PlannerMapView: UIViewRepresentable {
                 existing.renderedImage = image
                 if let annoView = mapView.view(for: existing) {
                     annoView.image = image
+                    // 🚀 화면 픽셀 좌표 실시간 즉각 동기화 (KVO 대기 없이 슬라이더 스크러빙 시 60fps 즉시 이동 보장)
+                    annoView.center = mapView.convert(coordinate, toPointTo: mapView)
                 }
             } else {
                 let anno = CustomMapAnnotation(
@@ -660,11 +662,11 @@ struct PlannerMapView: UIViewRepresentable {
                 targetPoint: parent.targetPoint,
                 anchorMode: parent.anchorMode,
                 isAligned: parent.isAligned,
-                moonAzDeci: Int((parent.moon.azimuthDeg * 5.0).rounded()),
-                moonAltDeci: Int((parent.moon.altitudeDeg * 5.0).rounded()),
-                sunAzDeci: Int((parent.sun.azimuthDeg * 5.0).rounded()),
-                sunAltDeci: Int((parent.sun.altitudeDeg * 5.0).rounded()),
-                targetHeightInt: Int(parent.targetHeight.rounded()),
+                moonAzimuth: parent.moon.azimuthDeg,
+                moonAltitude: parent.moon.altitudeDeg,
+                sunAzimuth: parent.sun.azimuthDeg,
+                sunAltitude: parent.sun.altitudeDeg,
+                targetHeight: parent.targetHeight,
                 sunriseStr: parent.sunDayTimes.sunriseTimeStr,
                 sunsetStr: parent.sunDayTimes.sunsetTimeStr,
                 userLocLatE4: userLatE4,

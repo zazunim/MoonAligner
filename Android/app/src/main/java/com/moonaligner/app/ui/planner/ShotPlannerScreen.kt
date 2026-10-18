@@ -417,10 +417,12 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
         }
     }
 
-    val selectedHour = selectedHourFloat.toInt().coerceIn(0, 23)
-    val selectedMinute = ((selectedHourFloat - selectedHour) * 60f).toInt().coerceIn(0, 59)
-    val selectedInstant = remember(today, selectedHour, selectedMinute) {
-        ZonedDateTime.of(today, LocalTime.of(selectedHour, selectedMinute), seoulZone).toInstant()
+    val totalSeconds = (selectedHourFloat * 3600f).toInt().coerceIn(0, 86399)
+    val selectedHour = totalSeconds / 3600
+    val selectedMinute = (totalSeconds % 3600) / 60
+    val selectedSecond = totalSeconds % 60
+    val selectedInstant = remember(today, selectedHour, selectedMinute, selectedSecond) {
+        ZonedDateTime.of(today, LocalTime.of(selectedHour, selectedMinute, selectedSecond), seoulZone).toInstant()
     }
 
     // 천체 위치 (카메라 지점 기준)
@@ -583,7 +585,8 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                         sharedState.celestialTarget,
                         targetHeight.roundToInt(),
                         selectedHour,
-                        selectedMinute
+                        selectedMinute,
+                        selectedSecond
                     )
                     if (mapView.tag == renderKey) {
                         return@AndroidView
