@@ -668,6 +668,7 @@ struct PlannerMapView: UIViewRepresentable {
             let isAligned: Bool
             let moonAzimuth: Double
             let moonAltitude: Double
+            let moonPhase: MoonPhase
             let sunAzimuth: Double
             let sunAltitude: Double
             let targetHeight: Double
@@ -848,6 +849,7 @@ struct PlannerMapView: UIViewRepresentable {
                 isAligned: parent.isAligned,
                 moonAzimuth: parent.moon.azimuthDeg,
                 moonAltitude: parent.moon.altitudeDeg,
+                moonPhase: parent.moon.phase,
                 sunAzimuth: parent.sun.azimuthDeg,
                 sunAltitude: parent.sun.altitudeDeg,
                 targetHeight: parent.targetHeight,
@@ -953,13 +955,19 @@ struct PlannerMapView: UIViewRepresentable {
                 activeKeys: &activeKeys
             )
 
-            // 🌕 달 마커 & 달 궤적 뱃지
-            let moonImage = MapBadgeDrawer.createCircularBadge(symbol: "🌕", bgColor: UIColor(hex: 0xEAB308), size: 44, borderColor: UIColor(hex: 0xFEF08A))
+            // 🌕 달 마커 & 달 궤적 뱃지 (현재 위상 이모지 반영 🌑🌒🌓🌔🌕🌖🌗🌘)
+            let moonEmoji = parent.moon.phase.emoji
+            let moonImage = MapBadgeDrawer.createCircularBadge(
+                symbol: moonEmoji,
+                bgColor: UIColor(hex: 0x1E1B4B),
+                size: 44,
+                borderColor: UIColor(hex: 0xFDE047)
+            )
             upsertAnnotation(
                 mapView: mapView,
                 key: "moon",
                 coordinate: moonTipCoord,
-                title: "🌕 달 (\(parent.moon.phase.displayName))",
+                title: "\(moonEmoji) 달 (\(parent.moon.phase.displayName))",
                 subtitle: "고도: \(String(format: "%.1f", parent.moon.altitudeDeg))° | 방위각: \(Int(parent.moon.azimuthDeg))°",
                 itemType: .moon,
                 image: moonImage,
@@ -971,8 +979,8 @@ struct PlannerMapView: UIViewRepresentable {
                 let moonMidLon = parent.cameraPoint.longitudeDeg + (moonTip.longitudeDeg - parent.cameraPoint.longitudeDeg) * 0.45
                 let moonBadgeImage = MapBadgeDrawer.createTextBadge(
                     text: parent.isAligned
-                        ? "🎯 3점 1열 정렬 [📷➔🗼➔🌕] (\(Int(parent.moon.azimuthDeg))°)"
-                        : "🌕 달 궤적 (\(Int(parent.moon.azimuthDeg))° / \(String(format: "%.1f", parent.moon.altitudeDeg))°)",
+                        ? "🎯 3점 1열 정렬 [📷➔🗼➔\(moonEmoji)] (\(Int(parent.moon.azimuthDeg))°)"
+                        : "\(moonEmoji) 달 궤적 (\(Int(parent.moon.azimuthDeg))° / \(String(format: "%.1f", parent.moon.altitudeDeg))°)",
                     bgColor: parent.isAligned ? UIColor(hex: 0x14532D, alpha: 0.95) : UIColor(hex: 0x1E1B4B, alpha: 0.9),
                     textColor: UIColor(hex: 0xFEF08A)
                 )
@@ -1326,14 +1334,14 @@ public struct ShotPlannerView: View {
         let isSun = sharedState.celestialTarget == .sun
         let azimuth = isSun ? sun.azimuthDeg : moon.azimuthDeg
         sharedState.alignCameraToMoonLine(moonAzimuthDeg: azimuth)
-        let label = isSun ? "☀️태양" : "🌕달"
+        let label = isSun ? "☀️태양" : "\(moon.phase.emoji)달"
         selectedMarkerMessage = "🎯 3점 1열 카메라 정렬 완료! [📷카메라 ➔ 🗼피사체 ➔ \(label)]"
     }
 
     /// ⏱️ 현재 카메라-피사체 조준선에 달/태양이 1열로 통과하는 가장 가까운 시각으로 자동 이동
     private func alignTimeToCelestialTarget() {
         let isSun = sharedState.celestialTarget == .sun
-        let label = isSun ? "태양" : "달"
+        let label = isSun ? "태양" : "\(moon.phase.emoji)달"
         if let match = AlignmentFinder.findNextAzimuthAlignment(
             camera: sharedState.cameraPoint,
             target: sharedState.targetPoint,
@@ -1382,7 +1390,7 @@ public struct ShotPlannerView: View {
                     HStack(spacing: 4) {
                         let isMoon = sharedState.celestialTarget == .moon
                         Button(action: { sharedState.celestialTarget = .moon }) {
-                            Text("🌕 달 플래너")
+                            Text("\(moon.phase.emoji) 달 플래너")
                                 .font(.system(size: 12, weight: isMoon ? .bold : .medium))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 6)
@@ -1706,7 +1714,7 @@ public struct ShotPlannerView: View {
                     HStack(spacing: 0) {
                         let isMoon = sharedState.celestialTarget == .moon
                         Button(action: { sharedState.celestialTarget = .moon }) {
-                            Text("🌕 달")
+                            Text("\(moon.phase.emoji) 달")
                                 .font(.system(size: 11, weight: isMoon ? .bold : .medium))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)

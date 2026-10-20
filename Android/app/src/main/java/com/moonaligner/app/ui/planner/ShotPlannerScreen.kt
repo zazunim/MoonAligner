@@ -464,7 +464,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
 
     val alignCameraToColinear: () -> Unit = {
         sharedState.alignCameraToMoonLine(targetAzimuth)
-        val name = if (isSunTarget) "☀️태양" else "🌕달"
+        val name = if (isSunTarget) "☀️태양" else "${moon.phase.emoji}달"
         selectedMarkerMessage = "🎯 3점 1열 카메라 정렬 완료! [📷카메라 ➔ 🗼피사체 ➔ $name]"
     }
 
@@ -476,7 +476,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
             startInstant = selectedInstant,
             isSun = isSun
         )
-        val targetName = if (isSun) "☀️태양" else "🌕달"
+        val targetName = if (isSun) "☀️태양" else "${moon.phase.emoji}달"
         if (match != null) {
             val zdt = match.timestamp.atZone(seoulZone)
             today = zdt.toLocalDate()
@@ -782,7 +782,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                                 borderColor = AndroidColor.parseColor("#FDE047")
                             )
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                            title = "🌕 현재 달 (${moon.phase.displayName})"
+                            title = "${moon.phase.emoji} 현재 달 (${moon.phase.displayName})"
                             snippet = "고도: ${String.format("%.1f", moon.altitudeDeg)}° | 방위각: ${moon.azimuthDeg.roundToInt()}°"
                             setOnMarkerClickListener { marker, _ ->
                                 marker.showInfoWindow()
@@ -812,7 +812,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                                 borderColor = AndroidColor.parseColor("#FDE047")
                             )
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                            title = "🌕 현재 달 (${moon.phase.displayName})"
+                            title = "${moon.phase.emoji} 현재 달 (${moon.phase.displayName})"
                             snippet = "고도: ${String.format("%.1f", moon.altitudeDeg)}° | 방위각: ${moon.azimuthDeg.roundToInt()}°"
                             setOnMarkerClickListener { marker, _ ->
                                 marker.showInfoWindow()
@@ -828,8 +828,8 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                             position = OsmGeoPoint(moonMidLat, moonMidLon)
                             icon = createTextBadgeIcon(
                                 context,
-                                if (isAligned) "🎯 3점 1열 정렬 [📷➔🗼➔🌕] (${String.format("%.0f", moon.azimuthDeg)}°)"
-                                else "🌕 달 궤적 (${String.format("%.0f", moon.azimuthDeg)}° / ${String.format("%.1f", moon.altitudeDeg)}°)",
+                                if (isAligned) "🎯 3점 1열 정렬 [📷➔🗼➔${moon.phase.emoji}] (${String.format("%.0f", moon.azimuthDeg)}°)"
+                                else "${moon.phase.emoji} 달 궤적 (${String.format("%.0f", moon.azimuthDeg)}° / ${String.format("%.1f", moon.altitudeDeg)}°)",
                                 bgColor = if (isAligned) AndroidColor.parseColor("#E614532D") else AndroidColor.parseColor("#E61E1B4B"),
                                 textColor = AndroidColor.parseColor("#FEF08A")
                             )
@@ -1045,7 +1045,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                             .padding(horizontal = 14.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            "🌕 달 플래너",
+                            "${moon.phase.emoji} 달 플래너",
                             fontSize = 12.sp,
                             fontWeight = if (isMoon) FontWeight.Bold else FontWeight.Medium,
                             color = if (isMoon) NightSkyBackground else TextSecondary
@@ -1441,7 +1441,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                             .padding(horizontal = 7.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            "🌕 달",
+                            "${moon.phase.emoji} 달",
                             fontSize = 11.sp,
                             fontWeight = if (isMoon) FontWeight.Bold else FontWeight.Medium,
                             color = if (isMoon) NightSkyBackground else TextPrimary
