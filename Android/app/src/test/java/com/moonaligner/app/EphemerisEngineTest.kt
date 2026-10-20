@@ -53,4 +53,19 @@ class EphemerisEngineTest {
         // 표고차 약 464m, 거리 약 4.7km -> 앙각 약 5도 ~ 6도
         assertTrue("남산타워를 올려다보는 앙각이 약 4.5°~7.0° (실제: $elevation°)", elevation in 4.5..7.0)
     }
+
+    @Test
+    fun testMoonPhasesOctober2026() {
+        // 2026년 10월 26일은 보름달(망)이어야 함
+        val fullMoonDate = Instant.parse("2026-10-26T12:00:00Z")
+        val moonOct26 = EphemerisEngine.calculateMoon(fullMoonDate, 37.5665, 126.9780)
+        assertTrue("10월 26일은 보름달이어야 함: ${moonOct26.phase}", moonOct26.phase == com.moonaligner.app.core.astronomy.MoonPhase.FULL_MOON)
+        assertTrue("10월 26일 보름달 조도율은 90% 이상이어야 함: ${moonOct26.illuminationFraction}", moonOct26.illuminationFraction >= 0.90)
+
+        // 2026년 10월 10일은 신월(삭)이어야 함
+        val newMoonDate = Instant.parse("2026-10-10T12:00:00Z")
+        val moonOct10 = EphemerisEngine.calculateMoon(newMoonDate, 37.5665, 126.9780)
+        assertTrue("10월 10일은 신월이어야 함: ${moonOct10.phase}", moonOct10.phase == com.moonaligner.app.core.astronomy.MoonPhase.NEW_MOON)
+        assertTrue("10월 10일 신월 조도율은 10% 이하여야 함: ${moonOct10.illuminationFraction}", moonOct10.illuminationFraction <= 0.10)
+    }
 }

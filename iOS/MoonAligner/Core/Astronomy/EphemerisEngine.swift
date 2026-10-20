@@ -67,16 +67,18 @@ public enum EphemerisEngine {
         let correctedAltitude = applyAtmosphericRefraction(trueAltitudeDeg: rawAltitude)
         let angularDiameterDeg = 2.0 * asin(moonRadiusKm / distanceKm) * radToDeg
 
-        let phaseAngleDeg = normalizeDeg(180.0 - d -
-            6.289 * sin(mPrimeRad) +
-            2.100 * sin(mRad) -
-            1.274 * sin(2.0 * dRad - mPrimeRad) -
+        // 달의 황도 이각 (Elongation / Moon Age Angle: 0°=신월, 90°=상현, 180°=보름달, 270°=하현, 360°=신월)
+        let moonAgeAngleDeg = normalizeDeg(
+            d +
+            6.289 * sin(mPrimeRad) -
+            2.100 * sin(mRad) +
+            1.274 * sin(2.0 * dRad - mPrimeRad) +
             0.658 * sin(2.0 * dRad)
         )
 
-        let phase = MoonPhase.fromPhaseAngle(phaseAngleDeg)
-        let illuminationFraction = (1.0 + cos(phaseAngleDeg * degToRad)) / 2.0
-        let ageDays = (phaseAngleDeg / 360.0) * 29.530588853
+        let phase = MoonPhase.fromPhaseAngle(moonAgeAngleDeg)
+        let illuminationFraction = (1.0 - cos(moonAgeAngleDeg * degToRad)) / 2.0
+        let ageDays = (moonAgeAngleDeg / 360.0) * 29.530588853
 
         return MoonDetails(
             azimuthDeg: azimuth,

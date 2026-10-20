@@ -87,11 +87,17 @@ object EphemerisEngine {
         // 시직경 (도 단위): angularDiameter = 2 * arcsin(R_moon / distance)
         val angularDiameterDeg = 2.0 * asin(MOON_RADIUS_KM / distanceKm) * RAD_TO_DEG
 
-        // 위상각 및 위상 종류
-        val phaseAngleDeg = normalizeDeg(d)
-        val phase = MoonPhase.fromPhaseAngle(phaseAngleDeg)
-        val illuminationFraction = (1.0 - cos(phaseAngleDeg * DEG_TO_RAD)) / 2.0
-        val ageDays = (phaseAngleDeg / 360.0) * 29.530588853
+        // 달의 황도 이각 (Elongation / Moon Age Angle: 0°=신월, 90°=상현, 180°=보름달, 270°=하현, 360°=신월)
+        val moonAgeAngleDeg = normalizeDeg(
+            d +
+            6.289 * sin(mPrimeRad) -
+            2.100 * sin(mRad) +
+            1.274 * sin(2.0 * dRad - mPrimeRad) +
+            0.658 * sin(2.0 * dRad)
+        )
+        val phase = MoonPhase.fromPhaseAngle(moonAgeAngleDeg)
+        val illuminationFraction = (1.0 - cos(moonAgeAngleDeg * DEG_TO_RAD)) / 2.0
+        val ageDays = (moonAgeAngleDeg / 360.0) * 29.530588853
 
         return MoonDetails(
             azimuthDeg = azimuth,
