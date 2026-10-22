@@ -78,6 +78,8 @@ public struct MoonAlignmentOpportunity: Identifiable {
         case a = "✨ Grade A"
         case b = "👍 Grade B"
         
+        public var badgeText: String { rawValue }
+        
         public var title: String {
             switch self {
             case .s: return "🌟 Grade S (최고 추천)"
