@@ -1232,6 +1232,7 @@ public struct ShotPlannerView: View {
     @State private var searchDays: Int = 7
     @State private var selectedPhaseFilter: AlignmentFinder.MoonPhaseFilter = .all
     @State private var showSearchSheet: Bool = false
+    @State private var showOpportunitySheet: Bool = false
     @State private var alignments: [AlignmentFinder.AlignmentEvent] = []
 
     // 날짜 선택 및 촬영 계획 저장/불러오기 상태
@@ -1901,16 +1902,37 @@ public struct ShotPlannerView: View {
 
                         Spacer()
 
-                        Button(action: {
-                            runSearch()
-                        }) {
-                            Text("🔍 \(searchDays)일 정렬 탐색")
-                                .font(.system(size: 10.5, weight: .bold))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                        if sharedState.celestialTarget == .moon {
+                            Button(action: {
+                                showOpportunitySheet = true
+                            }) {
+                                HStack(spacing: 3) {
+                                    Text("🏆 달걸이 골든타임")
+                                        .font(.system(size: 11, weight: .bold))
+                                }
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 5)
                                 .background(Color.sunGold)
                                 .foregroundColor(.nightSky)
                                 .cornerRadius(6)
+                                .shadow(color: Color.sunGold.opacity(0.3), radius: 4, x: 0, y: 1)
+                            }
+                        }
+
+                        Button(action: {
+                            runSearch()
+                        }) {
+                            Text(sharedState.celestialTarget == .moon ? "🔍 일반 탐색" : "🔍 \(searchDays)일 정렬 탐색")
+                                .font(.system(size: 10.5, weight: .bold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(sharedState.celestialTarget == .moon ? Color.cardBackground : Color.sunGold)
+                                .foregroundColor(sharedState.celestialTarget == .moon ? Color.moonGlow : Color.nightSky)
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.gridLine, lineWidth: sharedState.celestialTarget == .moon ? 1 : 0)
+                                )
                         }
                     }
 
@@ -2008,6 +2030,35 @@ public struct ShotPlannerView: View {
                     df.timeZone = EphemerisEngine.seoulCalendar.timeZone
                     let targetLabel = (sharedState.celestialTarget == .sun) ? "태양" : "달"
                     planNameInput = "\(sharedState.selectedSubjectType.displayName) \(targetLabel) 정렬 (\(df.string(from: event.date)))"
+                    showSavePlanSheet = true
+                }
+        }
+        // 🏆 달걸이 골든타임 탐색 모달 시트 (Grade S/A/B, 블루아워, 추천 렌즈 등)
+        .sheet(isPresented: $showOpportunitySheet) {
+            MoonAlignmentOpportunitySheet(
+                cameraPoint: sharedState.cameraPoint,
+                targetPoint: sharedState.targetPoint,
+                targetHeightMeters: sharedState.targetHeight,
+                subjectName: sharedState.selectedSubjectType.displayName,
+                onSelectOpportunity: { opp in
+                    now = opp.date
+                    selectedHourFloat = EphemerisEngine.currentHourFloat(for: opp.date)
+                    isLiveSync = false
+                    let df = DateFormatter()
+                    df.locale = Locale(identifier: "ko_KR")
+                    df.timeZone = EphemerisEngine.seoulCalendar.timeZone
+                    df.dateFormat = "M/d HH:mm"
+                    selectedMarkerMessage = "🏆 \(opp.grade.badgeText) 달걸이 골든타임(\(df.string(from: opp.date)), \(opp.skyStage.shortLabel))으로 이동되었습니다!"
+                },
+                onSaveOpportunity: { opp in
+                    now = opp.date
+                    selectedHourFloat = EphemerisEngine.currentHourFloat(for: opp.date)
+                    isLiveSync = false
+                    let df = DateFormatter()
+                    df.locale = Locale(identifier: "ko_KR")
+                    df.timeZone = EphemerisEngine.seoulCalendar.timeZone
+                    df.dateFormat = "M/d HH:mm"
+                    planNameInput = "\(sharedState.selectedSubjectType.displayName) 달걸이 (\(df.string(from: opp.date)))"
                     showSavePlanSheet = true
                 }
             )

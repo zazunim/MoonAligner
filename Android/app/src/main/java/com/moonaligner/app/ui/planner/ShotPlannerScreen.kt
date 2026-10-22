@@ -48,6 +48,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.moonaligner.app.core.alignment.AlignmentFinder
 import com.moonaligner.app.core.alignment.GeoPoint
+import com.moonaligner.app.core.alignment.MoonAlignmentOpportunity
 import com.moonaligner.app.core.astronomy.EphemerisEngine
 import com.moonaligner.app.core.optics.CameraSensor
 import com.moonaligner.app.core.optics.OpticsCalculator
@@ -495,6 +496,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
     var selectedPhaseFilter by remember { mutableStateOf(AlignmentFinder.MoonPhaseFilter.ALL) }
     var bestAlignments by remember { mutableStateOf<List<AlignmentFinder.AlignmentEvent>>(emptyList()) }
     var showTimelineSheet by remember { mutableStateOf(false) }
+    var showOpportunitySheet by remember { mutableStateOf(false) }
 
     // 촬영 계획 저장 및 불러오기 상태
     var showSavePlanDialog by remember { mutableStateOf(false) }
@@ -1666,15 +1668,36 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
 
                     Spacer(modifier = Modifier.weight(1f))
 
+                    if (sharedState.celestialTarget == CelestialTargetType.MOON) {
+                        Button(
+                            onClick = { showOpportunitySheet = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = SunGold, contentColor = NightSkyBackground),
+                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Text(
+                                "🏆 달걸이 골든타임",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+
                     Button(
                         onClick = { runSearch(searchDays, selectedPhaseFilter) },
-                        colors = ButtonDefaults.buttonColors(containerColor = SunGold, contentColor = NightSkyBackground),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (sharedState.celestialTarget == CelestialTargetType.MOON) CardBackground else SunGold,
+                            contentColor = if (sharedState.celestialTarget == CelestialTargetType.MOON) MoonGlow else NightSkyBackground
+                        ),
+                        border = if (sharedState.celestialTarget == CelestialTargetType.MOON) BorderStroke(1.dp, GridLine) else null,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         shape = RoundedCornerShape(6.dp),
                         modifier = Modifier.height(26.dp)
                     ) {
                         Text(
-                            if (isSearching) "탐색중..." else "🔍 ${searchDays}일 정렬 탐색",
+                            if (isSearching) "탐색중..." else if (sharedState.celestialTarget == CelestialTargetType.MOON) "🔍 일반 탐색" else "🔍 ${searchDays}일 정렬 탐색",
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1692,6 +1715,37 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                 )
             }
         }
+    }
+
+    // 🏆 달걸이 골든타임 탐색 모달 바텀시트
+    if (showOpportunitySheet) {
+        MoonAlignmentOpportunitySheet(
+            cameraPoint = cameraPoint,
+            targetPoint = targetPoint,
+            targetHeightMeters = targetHeight,
+            subjectName = sharedState.selectedSubjectType.displayName,
+            onDismissRequest = { showOpportunitySheet = false },
+            onSelectOpportunity = { opp ->
+                val zdt = opp.timestamp.atZone(seoulZone)
+                today = zdt.toLocalDate()
+                val lt = zdt.toLocalTime()
+                selectedHourFloat = lt.hour + lt.minute / 60f + lt.second / 3600f
+                isLiveSync = false
+                val timeFormatter = DateTimeFormatter.ofPattern("M/d HH:mm")
+                selectedMarkerMessage = "🏆 ${opp.grade.badgeText} 달걸이 골든타임(${zdt.format(timeFormatter)}, ${opp.skyStage.shortLabel})으로 이동되었습니다!"
+            },
+            onSaveOpportunity = { opp ->
+                val zdt = opp.timestamp.atZone(seoulZone)
+                today = zdt.toLocalDate()
+                val lt = zdt.toLocalTime()
+                selectedHourFloat = lt.hour + lt.minute / 60f + lt.second / 3600f
+                isLiveSync = false
+                val timeFormatter = DateTimeFormatter.ofPattern("M/d HH:mm")
+                val targetName = sharedState.selectedSubjectType.displayName
+                planNameInput = "$targetName 달걸이 (${zdt.format(timeFormatter)})"
+                showSavePlanDialog = true
+            }
+        )
     }
 
     // 3. 최적 정렬 시각 모달 바텀시트 (기간 선택 + 위상 필터)

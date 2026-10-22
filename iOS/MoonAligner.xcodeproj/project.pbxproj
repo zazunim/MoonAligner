@@ -22,6 +22,8 @@
 		2013 /* GeoPoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1013 /* GeoPoint.swift */; };
 		2014 /* AlignmentFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1014 /* AlignmentFinder.swift */; };
 		2015 /* ShadowSimulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1015 /* ShadowSimulator.swift */; };
+		2029 /* MoonAlignmentFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1029 /* MoonAlignmentFinder.swift */; };
+		2030 /* MoonAlignmentOpportunitySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1030 /* MoonAlignmentOpportunitySheet.swift */; };
 		2016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1016 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -42,6 +44,8 @@
 		1013 /* GeoPoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoPoint.swift; sourceTree = "<group>"; };
 		1014 /* AlignmentFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlignmentFinder.swift; sourceTree = "<group>"; };
 		1015 /* ShadowSimulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShadowSimulator.swift; sourceTree = "<group>"; };
+		1029 /* MoonAlignmentFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoonAlignmentFinder.swift; sourceTree = "<group>"; };
+		1030 /* MoonAlignmentOpportunitySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoonAlignmentOpportunitySheet.swift; sourceTree = "<group>"; };
 		1016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -145,6 +149,7 @@
 			isa = PBXGroup;
 			children = (
 				1006 /* ShotPlannerView.swift */,
+				1030 /* MoonAlignmentOpportunitySheet.swift */,
 			);
 			path = Planner;
 			sourceTree = "<group>";
@@ -181,6 +186,7 @@
 			children = (
 				1013 /* GeoPoint.swift */,
 				1014 /* AlignmentFinder.swift */,
+				1029 /* MoonAlignmentFinder.swift */,
 			);
 			path = Alignment;
 			sourceTree = "<group>";
@@ -277,6 +283,8 @@
 				2013 /* GeoPoint.swift in Sources */,
 				2014 /* AlignmentFinder.swift in Sources */,
 				2015 /* ShadowSimulator.swift in Sources */,
+				2029 /* MoonAlignmentFinder.swift in Sources */,
+				2030 /* MoonAlignmentOpportunitySheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
