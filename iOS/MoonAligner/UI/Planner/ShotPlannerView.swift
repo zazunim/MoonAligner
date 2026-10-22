@@ -2032,6 +2032,7 @@ public struct ShotPlannerView: View {
                     planNameInput = "\(sharedState.selectedSubjectType.displayName) \(targetLabel) 정렬 (\(df.string(from: event.date)))"
                     showSavePlanSheet = true
                 }
+            )
         }
         // 🏆 달걸이 골든타임 탐색 모달 시트 (Grade S/A/B, 블루아워, 추천 렌즈 등)
         .sheet(isPresented: $showOpportunitySheet) {
