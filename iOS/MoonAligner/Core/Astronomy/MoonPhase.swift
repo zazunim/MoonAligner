@@ -13,6 +13,7 @@ public enum MoonPhase: String, CaseIterable {
 
     public var displayName: String { rawValue }
     public var name: String { rawValue }
+    public var koreanName: String { rawValue }
 
     public var emoji: String {
         switch self {

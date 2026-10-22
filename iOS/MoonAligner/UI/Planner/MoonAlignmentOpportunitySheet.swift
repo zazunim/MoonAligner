@@ -291,6 +291,20 @@ private struct OpportunityCardView: View {
         df.dateFormat = "yyyy.MM.dd (E) HH:mm"
         return df.string(from: opportunity.date)
     }
+
+    private var moonPhaseText: String {
+        let percent = Int((opportunity.moonDetails.illuminationFraction * 100.0).rounded())
+        return "\(opportunity.moonDetails.phase.emoji) \(percent)% (\(opportunity.moonDetails.phase.displayName))"
+    }
+
+    private var angularOffsetText: String {
+        String(format: "±%.2f°", opportunity.angularOffsetDeg)
+    }
+
+    private var altitudeMotionText: String {
+        let motion = opportunity.isMoonRising ? "월출 ↗" : "월몰 ↘"
+        return String(format: "%.1f° · %@", opportunity.moonDetails.altitudeDeg, motion)
+    }
     
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -339,7 +353,7 @@ private struct OpportunityCardView: View {
                 
                 Spacer()
                 
-                Text("\(opportunity.moonDetails.phase.emoji) \(Int((opportunity.moonDetails.illuminationFraction * 100).rounded()))% (\(opportunity.moonDetails.phase.koreanName))")
+                Text(moonPhaseText)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.moonGlow)
             }
@@ -361,7 +375,7 @@ private struct OpportunityCardView: View {
                     Text("정렬 오차")
                         .font(.system(size: 10))
                         .foregroundColor(.textSecondary)
-                    Text("±\(String(format: "%.2f", opportunity.angularOffsetDeg))°")
+                    Text(angularOffsetText)
                         .font(.system(size: 12, weight: .bold))
                         .foregroundColor(.sunGold)
                 }
@@ -372,7 +386,7 @@ private struct OpportunityCardView: View {
                     Text("고도 · 궤적")
                         .font(.system(size: 10))
                         .foregroundColor(.textSecondary)
-                    Text("\(String(format: "%.1f", opportunity.moonDetails.altitudeDeg))° · \(opportunity.isMoonRising ? "월출 ↗" : "월몰 ↘")")
+                    Text(altitudeMotionText)
                         .font(.system(size: 12, weight: .bold))
                         .foregroundColor(.textPrimary)
                 }
