@@ -9,7 +9,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,7 +17,6 @@ import com.moonaligner.app.ui.calculator.CalculatorScreen
 import com.moonaligner.app.ui.planner.PlannerSharedState
 import com.moonaligner.app.ui.planner.ShotPlannerScreen
 import com.moonaligner.app.ui.theme.*
-import com.moonaligner.app.ui.tracker.SunMoonTrackerScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,7 +36,7 @@ class MainActivity : ComponentActivity() {
                             NavigationBarItem(
                                 selected = sharedState.selectedTab == 0,
                                 onClick = { sharedState.selectedTab = 0 },
-                                icon = { Icon(Icons.Default.DateRange, contentDescription = "달 정렬 플래너") },
+                                icon = { Icon(Icons.Default.DateRange, contentDescription = "정렬 플래너") },
                                 label = { Text("정렬 플래너") },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = NightSkyBackground,
@@ -51,8 +49,21 @@ class MainActivity : ComponentActivity() {
                             NavigationBarItem(
                                 selected = sharedState.selectedTab == 1,
                                 onClick = { sharedState.selectedTab = 1 },
-                                icon = { Icon(Icons.Default.Info, contentDescription = "초망원 거리 계산기") },
+                                icon = { Icon(Icons.Default.Info, contentDescription = "화각 계산기") },
                                 label = { Text("화각 계산기") },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = NightSkyBackground,
+                                    selectedTextColor = MoonGlow,
+                                    indicatorColor = SunGold,
+                                    unselectedIconColor = TextSecondary,
+                                    unselectedTextColor = TextSecondary
+                                )
+                            )
+                            NavigationBarItem(
+                                selected = sharedState.selectedTab == 2,
+                                onClick = { sharedState.selectedTab = 2 },
+                                icon = { Icon(Icons.Default.Place, contentDescription = "AR 뷰파인더") },
+                                label = { Text("AR 뷰파인더") },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = NightSkyBackground,
                                     selectedTextColor = MoonGlow,
@@ -73,6 +84,7 @@ class MainActivity : ComponentActivity() {
                         when (sharedState.selectedTab) {
                             0 -> ShotPlannerScreen(sharedState = sharedState)
                             1 -> CalculatorScreen(sharedState = sharedState)
+                            2 -> ArTrackerScreen(sharedState = sharedState)
                         }
                     }
                 }

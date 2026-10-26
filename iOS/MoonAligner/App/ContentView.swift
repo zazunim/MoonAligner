@@ -42,6 +42,12 @@ struct ContentView: View {
                     Label("화각 계산기", systemImage: "scope")
                 }
                 .tag(1)
+            
+            ArTrackerView(sharedState: sharedState)
+                .tabItem {
+                    Label("AR 뷰파인더", systemImage: "camera.viewfinder")
+                }
+                .tag(2)
         }
         .accentColor(ColorTheme.sunGold)
         .background(ColorTheme.nightSky)
