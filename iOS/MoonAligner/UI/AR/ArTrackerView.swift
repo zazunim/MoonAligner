@@ -208,6 +208,23 @@ public struct ArTrackerView: View {
         return String(format: "%02d:%02d", totalMinutes / 60, totalMinutes % 60)
     }
     
+    private var targetInfoText: String {
+        if targetMode == .sun {
+            let stage = sunPosition.altitudeDeg >= -4.0 && sunPosition.altitudeDeg <= 2.0 ? "🌅 골든아워" : (sunPosition.altitudeDeg >= -8.0 && sunPosition.altitudeDeg < -4.0 ? "🌟 블루아워" : (sunPosition.altitudeDeg > 2.0 ? "☀️ 주간" : "🌙 야간"))
+            return "☀️ 태양 방위 \(Int(round(sunPosition.azimuthDeg)))° · 고도 \(String(format: "%.1f", sunPosition.altitudeDeg))° (\(stage))"
+        } else {
+            let phasePct = Int((moonPosition.illuminationFraction * 100.0).rounded())
+            return "🌙 달 방위 \(Int(round(moonPosition.azimuthDeg)))° · 고도 \(String(format: "%.1f", moonPosition.altitudeDeg))° (\(phasePct)%)"
+        }
+    }
+    
+    private func formatPlannedDate(_ date: Date) -> String {
+        let df = DateFormatter()
+        df.dateFormat = "M/d HH:mm"
+        df.timeZone = EphemerisEngine.seoulCalendar.timeZone
+        return df.string(from: date)
+    }
+    
     private var moonPosition: MoonDetails {
         EphemerisEngine.calculateMoon(date: effectiveDate, latitudeDeg: activeLatitude, longitudeDeg: activeLongitude)
     }
@@ -585,17 +602,7 @@ public struct ArTrackerView: View {
                                 .foregroundColor(ColorTheme.accentBlue)
                         }
                         
-                        let targetInfo: String = {
-                            if targetMode == .sun {
-                                let stage = sunPosition.altitudeDeg >= -4.0 && sunPosition.altitudeDeg <= 2.0 ? "🌅 골든아워" : (sunPosition.altitudeDeg >= -8.0 && sunPosition.altitudeDeg < -4.0 ? "🌟 블루아워" : (sunPosition.altitudeDeg > 2.0 ? "☀️ 주간" : "🌙 야간"))
-                                return "☀️ 태양 방위 \(Int(round(sunPosition.azimuthDeg)))° · 고도 \(String(format: "%.1f", sunPosition.altitudeDeg))° (\(stage))"
-                            } else {
-                                let phasePct = Int((moonPosition.illuminationFraction * 100.0).rounded())
-                                return "🌙 달 방위 \(Int(round(moonPosition.azimuthDeg)))° · 고도 \(String(format: "%.1f", moonPosition.altitudeDeg))° (\(phasePct)%)"
-                            }
-                        }()
-                        
-                        Text(targetInfo)
+                        Text(targetInfoText)
                             .font(.system(size: 11))
                             .foregroundColor(ColorTheme.moonGlow)
                     }
@@ -632,9 +639,6 @@ public struct ArTrackerView: View {
                     VStack(spacing: 8) {
                         // 1. Planner Date/Time Sync Chip (if plannedDate available)
                         if let planned = sharedState.plannedDate {
-                            let df = DateFormatter()
-                            df.dateFormat = "M/d HH:mm"
-                            df.timeZone = EphemerisEngine.seoulCalendar.timeZone
                             Button(action: {
                                 previewDate = planned
                                 selectedHourFloat = EphemerisEngine.currentHourFloat(for: planned)
@@ -643,7 +647,7 @@ public struct ArTrackerView: View {
                                 HStack(spacing: 5) {
                                     Image(systemName: "calendar.badge.clock")
                                         .font(.system(size: 11, weight: .bold))
-                                    Text("📋 플래너 추천 일시 (\(df.string(from: planned))) 적용")
+                                    Text("📋 플래너 추천 일시 (\(formatPlannedDate(planned))) 적용")
                                         .font(.system(size: 11, weight: .bold))
                                 }
                                 .frame(maxWidth: .infinity)
