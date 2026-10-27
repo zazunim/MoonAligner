@@ -139,13 +139,20 @@ fun ArTrackerScreen(sharedState: PlannerSharedState) {
             override fun onSensorChanged(event: SensorEvent?) {
                 if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
                     SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                    SensorManager.getOrientation(rotationMatrix, orientation)
 
-                    val azDeg = Math.toDegrees(orientation[0].toDouble()).toFloat()
-                    val pitchDeg = Math.toDegrees(orientation[1].toDouble()).toFloat()
+                    // Android Camera vector in device space: (0, 0, -1)
+                    // Transformed to World Space (East, North, Up):
+                    // camX = -R[2], camY = -R[5], camZ = -R[8]
+                    val camX = -rotationMatrix[2]
+                    val camY = -rotationMatrix[5]
+                    val camZ = -rotationMatrix[8]
+                    val horiz = sqrt(camX * camX + camY * camY).coerceAtLeast(0.0001f)
 
-                    rawAzimuth = (azDeg + 360f) % 360f
-                    rawPitch = -pitchDeg
+                    val pitchDeg = Math.toDegrees(atan2(camZ.toDouble(), horiz.toDouble())).toFloat()
+                    val azDeg = ((Math.toDegrees(atan2(camX.toDouble(), camY.toDouble())).toFloat() + 360f) % 360f)
+
+                    rawAzimuth = azDeg
+                    rawPitch = pitchDeg
                 }
             }
 
@@ -335,8 +342,9 @@ fun ArTrackerScreen(sharedState: PlannerSharedState) {
         // 2. AR 캔버스 오버레이 (지평선, 나침반, 궤적, 천체, 조준선)
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
-            val pxPerDegX = size.width / 60f
-            val pxPerDegY = size.height / 45f
+            val pxPerDeg = size.width / 60f
+            val pxPerDegX = pxPerDeg
+            val pxPerDegY = pxPerDeg
 
             // (A) 인공 지평선 (Horizon Line)
             val horizonY = center.y + (devicePitch * pxPerDegY)
@@ -459,8 +467,9 @@ fun ArTrackerScreen(sharedState: PlannerSharedState) {
                     )
                 } else if (targetMode == ArTargetMode.MOON || targetMode == ArTargetMode.BOTH) {
                     val edgeMargin = 46f
-                    val clampedX = moonX.coerceIn(edgeMargin, size.width - edgeMargin)
-                    val clampedY = moonY.coerceIn(edgeMargin + 85f, size.height - edgeMargin - 100f)
+                    val minSafeTopY = if (showTimeSlider) 230.dp.toPx() else 130.dp.toPx()
+                    val clampedX = moonX.coerceIn(edgeMargin + 10f, size.width - edgeMargin - 10f)
+                    val clampedY = moonY.coerceIn(minSafeTopY, size.height - edgeMargin - 100f)
 
                     drawRoundRect(
                         color = Color(0xEB1E1B4B),
@@ -482,7 +491,16 @@ fun ArTrackerScreen(sharedState: PlannerSharedState) {
                         typeface = Typeface.DEFAULT_BOLD
                         textAlign = AndroidPaint.Align.CENTER
                     }
-                    val dirArrow = if (dAzMoon > 0) "오른쪽 ▶" else "◀ 왼쪽"
+                    val dirArrow = when {
+                        dPitchMoon > 10f && abs(dAzMoon) < 10f -> "▲ 위쪽"
+                        dPitchMoon < -10f && abs(dAzMoon) < 10f -> "▼ 아래쪽"
+                        dAzMoon > 10f && dPitchMoon > 10f -> "↗ 오른쪽 위"
+                        dAzMoon < -10f && dPitchMoon > 10f -> "↖ 왼쪽 위"
+                        dAzMoon > 10f && dPitchMoon < -10f -> "↘ 오른쪽 아래"
+                        dAzMoon < -10f && dPitchMoon < -10f -> "↙ 왼쪽 아래"
+                        dAzMoon > 0f -> "오른쪽 ▶"
+                        else -> "◀ 왼쪽"
+                    }
                     val dist = moonAngularDist.roundToInt()
                     drawContext.canvas.nativeCanvas.drawText("🌙 $dirArrow ${dist}°", clampedX, clampedY + 4f, guidePaint)
                 }
@@ -508,8 +526,9 @@ fun ArTrackerScreen(sharedState: PlannerSharedState) {
                     drawContext.canvas.nativeCanvas.drawText("☀️ 태양 (고도 %.1f°)".format(Locale.US, sun.altitudeDeg), sunX, sunY + 42.dp.toPx(), sunTextPaint)
                 } else if (targetMode == ArTargetMode.SUN || targetMode == ArTargetMode.BOTH) {
                     val edgeMargin = 46f
-                    val clampedX = sunX.coerceIn(edgeMargin, size.width - edgeMargin)
-                    val clampedY = sunY.coerceIn(edgeMargin + 85f, size.height - edgeMargin - 100f)
+                    val minSafeTopY = if (showTimeSlider) 230.dp.toPx() else 130.dp.toPx()
+                    val clampedX = sunX.coerceIn(edgeMargin + 10f, size.width - edgeMargin - 10f)
+                    val clampedY = sunY.coerceIn(minSafeTopY, size.height - edgeMargin - 100f)
 
                     drawRoundRect(
                         color = Color(0xEB78350F),
@@ -531,7 +550,16 @@ fun ArTrackerScreen(sharedState: PlannerSharedState) {
                         typeface = Typeface.DEFAULT_BOLD
                         textAlign = AndroidPaint.Align.CENTER
                     }
-                    val dirArrow = if (dAzSun > 0) "오른쪽 ▶" else "◀ 왼쪽"
+                    val dirArrow = when {
+                        dPitchSun > 10f && abs(dAzSun) < 10f -> "▲ 위쪽"
+                        dPitchSun < -10f && abs(dAzSun) < 10f -> "▼ 아래쪽"
+                        dAzSun > 10f && dPitchSun > 10f -> "↗ 오른쪽 위"
+                        dAzSun < -10f && dPitchSun > 10f -> "↖ 왼쪽 위"
+                        dAzSun > 10f && dPitchSun < -10f -> "↘ 오른쪽 아래"
+                        dAzSun < -10f && dPitchSun < -10f -> "↙ 왼쪽 아래"
+                        dAzSun > 0f -> "오른쪽 ▶"
+                        else -> "◀ 왼쪽"
+                    }
                     val dist = sunAngularDist.roundToInt()
                     drawContext.canvas.nativeCanvas.drawText("☀️ $dirArrow ${dist}°", clampedX, clampedY + 4f, guidePaint)
                 }

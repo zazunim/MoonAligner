@@ -79,8 +79,18 @@ class ArMotionManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             guard let self = self else { return }
             
             if let motion = self.motionManager.deviceMotion {
-                // Pitch: angle in degrees from horizon (-90 to +90)
-                let pitchDeg = -motion.attitude.pitch * 180.0 / .pi
+                // Precise Camera Elevation (Pitch) from Gravity Vector:
+                // Device Coordinate System: +X right, +Y top, +Z screen normal (towards user).
+                // Back-facing camera vector is (0, 0, -1).
+                // Gravity vector g = (gx, gy, gz) points straight DOWN towards Earth center.
+                // When camera points at horizon: gz = 0, pitch = 0°.
+                // When camera points UP at zenith: gz = +1.0, pitch = +90°.
+                // When camera points DOWN at nadir: gz = -1.0, pitch = -90°.
+                let gz = motion.gravity.z
+                let gx = motion.gravity.x
+                let gy = motion.gravity.y
+                let horiz = sqrt(gx * gx + gy * gy)
+                let pitchDeg = atan2(gz, max(horiz, 0.0001)) * 180.0 / .pi
                 self.rawPitch = pitchDeg
             }
             
@@ -322,8 +332,9 @@ public struct ArTrackerView: View {
             GeometryReader { geometry in
                 let size = geometry.size
                 let center = CGPoint(x: size.width / 2.0, y: size.height / 2.0)
-                let pxPerDegX = size.width / 60.0
-                let pxPerDegY = size.height / 45.0
+                let pxPerDeg = size.width / 60.0
+                let pxPerDegX = pxPerDeg
+                let pxPerDegY = pxPerDeg
                 
                 Canvas { context, _ in
                     // (A) Artificial Horizon Line
@@ -446,10 +457,19 @@ public struct ArTrackerView: View {
                         } else if targetMode == .moon || targetMode == .both {
                             // Dynamic 360° Off-screen Radar Arrow
                             let edgeMargin: CGFloat = 46.0
-                            let clampedX = min(max(moonX, edgeMargin), size.width - edgeMargin)
-                            let clampedY = min(max(moonY, edgeMargin + 85), size.height - edgeMargin - 100)
+                            let minSafeTopY: CGFloat = showTimeSlider ? 230.0 : 130.0
+                            let clampedX = min(max(moonX, edgeMargin + 10), size.width - edgeMargin - 10)
+                            let clampedY = min(max(moonY, minSafeTopY), size.height - edgeMargin - 100)
                             
-                            let arrow = dAzMoon > 0 ? "오른쪽 ▶" : "◀ 왼쪽"
+                            let arrow: String = {
+                                if dPitchMoon > 10 && abs(dAzMoon) < 10 { return "▲ 위쪽" }
+                                if dPitchMoon < -10 && abs(dAzMoon) < 10 { return "▼ 아래쪽" }
+                                if dAzMoon > 10 && dPitchMoon > 10 { return "↗ 오른쪽 위" }
+                                if dAzMoon < -10 && dPitchMoon > 10 { return "↖ 왼쪽 위" }
+                                if dAzMoon > 10 && dPitchMoon < -10 { return "↘ 오른쪽 아래" }
+                                if dAzMoon < -10 && dPitchMoon < -10 { return "↙ 왼쪽 아래" }
+                                return dAzMoon > 0 ? "오른쪽 ▶" : "◀ 왼쪽"
+                            }()
                             let dist = Int(round(moonAngularDist))
                             
                             context.fill(
@@ -497,10 +517,19 @@ public struct ArTrackerView: View {
                             context.draw(sunLabel, at: CGPoint(x: sunX, y: sunY + 42))
                         } else if targetMode == .sun || targetMode == .both {
                             let edgeMargin: CGFloat = 46.0
-                            let clampedX = min(max(sunX, edgeMargin), size.width - edgeMargin)
-                            let clampedY = min(max(sunY, edgeMargin + 85), size.height - edgeMargin - 100)
+                            let minSafeTopY: CGFloat = showTimeSlider ? 230.0 : 130.0
+                            let clampedX = min(max(sunX, edgeMargin + 10), size.width - edgeMargin - 10)
+                            let clampedY = min(max(sunY, minSafeTopY), size.height - edgeMargin - 100)
                             
-                            let arrow = dAzSun > 0 ? "오른쪽 ▶" : "◀ 왼쪽"
+                            let arrow: String = {
+                                if dPitchSun > 10 && abs(dAzSun) < 10 { return "▲ 위쪽" }
+                                if dPitchSun < -10 && abs(dAzSun) < 10 { return "▼ 아래쪽" }
+                                if dAzSun > 10 && dPitchSun > 10 { return "↗ 오른쪽 위" }
+                                if dAzSun < -10 && dPitchSun > 10 { return "↖ 왼쪽 위" }
+                                if dAzSun > 10 && dPitchSun < -10 { return "↘ 오른쪽 아래" }
+                                if dAzSun < -10 && dPitchSun < -10 { return "↙ 왼쪽 아래" }
+                                return dAzSun > 0 ? "오른쪽 ▶" : "◀ 왼쪽"
+                            }()
                             let dist = Int(round(sunAngularDist))
                             
                             context.fill(
