@@ -161,6 +161,7 @@ public struct ArTrackerView: View {
     
     @State private var targetMode: ArTargetMode = .moon
     @State private var currentDate = Date()
+    @State private var previewDate = Date()
     @State private var isLiveSync: Bool = true
     @State private var selectedHourFloat: Float = EphemerisEngine.currentHourFloat()
     @State private var showTimeSlider: Bool = false
@@ -184,11 +185,27 @@ public struct ArTrackerView: View {
             return currentDate
         } else {
             let calendar = EphemerisEngine.seoulCalendar
-            let startOfDay = calendar.startOfDay(for: currentDate)
+            let startOfDay = calendar.startOfDay(for: previewDate)
             let clampedHours = min(max(selectedHourFloat, 0.0), 23.9833)
             let seconds = Int(clampedHours * 3600.0)
-            return calendar.date(byAdding: .second, value: seconds, to: startOfDay) ?? currentDate
+            return calendar.date(byAdding: .second, value: seconds, to: startOfDay) ?? previewDate
         }
+    }
+    
+    private var relativeDayText: String {
+        let cal = EphemerisEngine.seoulCalendar
+        let startOfToday = cal.startOfDay(for: Date())
+        let startOfPreview = cal.startOfDay(for: previewDate)
+        let days = cal.dateComponents([.day], from: startOfToday, to: startOfPreview).day ?? 0
+        if days == 0 { return "오늘" }
+        if days == 1 { return "내일 D+1" }
+        if days > 1 { return "D+\(days)일" }
+        return "D\(days)일"
+    }
+    
+    private var formattedTimeText: String {
+        let totalMinutes = min(1439, max(0, Int((Double(selectedHourFloat) * 60.0).rounded())))
+        return String(format: "%02d:%02d", totalMinutes / 60, totalMinutes % 60)
     }
     
     private var moonPosition: MoonDetails {
@@ -592,7 +609,7 @@ public struct ArTrackerView: View {
                         HStack(spacing: 3) {
                             Image(systemName: showTimeSlider ? "clock.fill" : "clock")
                                 .font(.system(size: 11))
-                            Text(isLiveSync ? "실시간" : String(format: "%02d:%02d", Int(selectedHourFloat), Int((selectedHourFloat.truncatingRemainder(dividingBy: 1.0)) * 60.0)))
+                            Text(isLiveSync ? "실시간" : "\(formattedTimeText) (\(relativeDayText))")
                                 .font(.system(size: 11, weight: .bold))
                         }
                         .padding(.horizontal, 9)
@@ -610,38 +627,136 @@ public struct ArTrackerView: View {
                         .stroke(Color.white.opacity(0.12), lineWidth: 1)
                 )
                 
-                // (C) Optional Time Scrubbing Slider
+                // (C) Rich Date & Time Scrubbing Simulator
                 if showTimeSlider {
-                    VStack(spacing: 4) {
-                        HStack {
-                            Text("시간 프리뷰:")
-                                .font(.system(size: 11))
-                                .foregroundColor(ColorTheme.textSecondary)
-                            Spacer()
+                    VStack(spacing: 8) {
+                        // 1. Planner Date/Time Sync Chip (if plannedDate available)
+                        if let planned = sharedState.plannedDate {
+                            let df = DateFormatter()
+                            df.dateFormat = "M/d HH:mm"
+                            df.timeZone = EphemerisEngine.seoulCalendar.timeZone
                             Button(action: {
-                                isLiveSync = true
-                                currentDate = Date()
-                                selectedHourFloat = EphemerisEngine.currentHourFloat()
+                                previewDate = planned
+                                selectedHourFloat = EphemerisEngine.currentHourFloat(for: planned)
+                                isLiveSync = false
                             }) {
-                                Text(isLiveSync ? "🟢 현재 동기화됨" : "현재 시각으로 복귀")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(ColorTheme.sunGold)
+                                HStack(spacing: 5) {
+                                    Image(systemName: "calendar.badge.clock")
+                                        .font(.system(size: 11, weight: .bold))
+                                    Text("📋 플래너 추천 일시 (\(df.string(from: planned))) 적용")
+                                        .font(.system(size: 11, weight: .bold))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(ColorTheme.sunGold.opacity(0.18))
+                                .foregroundColor(ColorTheme.sunGold)
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(ColorTheme.sunGold.opacity(0.6), lineWidth: 1)
+                                )
                             }
                         }
                         
-                        Slider(
-                            value: $selectedHourFloat,
-                            in: 0.0...24.0,
-                            onEditingChanged: { editing in
-                                if editing { isLiveSync = false }
+                        // 2. Date Navigation Bar: [ ◀ -1일 ] [ 📅 DatePicker ] [ +1일 ▶ ] [ 🟢 실시간 ]
+                        HStack(spacing: 5) {
+                            Button(action: {
+                                let cal = EphemerisEngine.seoulCalendar
+                                if let prev = cal.date(byAdding: .day, value: -1, to: previewDate) {
+                                    previewDate = prev
+                                    isLiveSync = false
+                                }
+                            }) {
+                                Text("◀ -1일")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 5)
+                                    .background(ColorTheme.surfaceDark)
+                                    .cornerRadius(6)
                             }
-                        )
-                        .accentColor(ColorTheme.sunGold)
+                            
+                            // Native Compact DatePicker
+                            DatePicker(
+                                "",
+                                selection: Binding(
+                                    get: { previewDate },
+                                    set: { newDate in
+                                        previewDate = newDate
+                                        isLiveSync = false
+                                    }
+                                ),
+                                displayedComponents: [.date]
+                            )
+                            .labelsHidden()
+                            .datePickerStyle(.compact)
+                            .accentColor(ColorTheme.sunGold)
+                            
+                            Button(action: {
+                                let cal = EphemerisEngine.seoulCalendar
+                                if let next = cal.date(byAdding: .day, value: 1, to: previewDate) {
+                                    previewDate = next
+                                    isLiveSync = false
+                                }
+                            }) {
+                                Text("+1일 ▶")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 5)
+                                    .background(ColorTheme.surfaceDark)
+                                    .cornerRadius(6)
+                            }
+                            
+                            Spacer()
+                            
+                            Button(action: {
+                                isLiveSync = true
+                                let now = Date()
+                                currentDate = now
+                                previewDate = now
+                                selectedHourFloat = EphemerisEngine.currentHourFloat(for: now)
+                            }) {
+                                Text(isLiveSync ? "🟢 실시간" : "현재로 복귀")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(isLiveSync ? Color(hex: 0x22C55E) : ColorTheme.sunGold)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 5)
+                                    .background(ColorTheme.surfaceDark)
+                                    .cornerRadius(6)
+                            }
+                        }
+                        
+                        // 3. Time Scrubbing Slider
+                        VStack(spacing: 2) {
+                            HStack {
+                                Text("시간 프리뷰:")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ColorTheme.textSecondary)
+                                Text("\(formattedTimeText) (\(relativeDayText))")
+                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                    .foregroundColor(ColorTheme.sunGold)
+                                Spacer()
+                            }
+                            
+                            Slider(
+                                value: $selectedHourFloat,
+                                in: 0.0...24.0,
+                                onEditingChanged: { editing in
+                                    if editing { isLiveSync = false }
+                                }
+                            )
+                            .accentColor(ColorTheme.sunGold)
+                        }
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 10)
                     .background(ColorTheme.cardBackground.opacity(0.95))
-                    .cornerRadius(10)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    )
                 }
                 
                 if !motion.hasCameraPermission {
@@ -680,10 +795,19 @@ public struct ArTrackerView: View {
         .onAppear {
             currentDate = Date()
             targetMode = (sharedState.celestialTarget == .sun) ? .sun : .moon
+            if let planned = sharedState.plannedDate {
+                previewDate = planned
+                selectedHourFloat = EphemerisEngine.currentHourFloat(for: planned)
+                isLiveSync = false
+            } else {
+                previewDate = Date()
+                selectedHourFloat = EphemerisEngine.currentHourFloat(for: currentDate)
+            }
         }
         .onReceive(clockTimer) { tick in
             if isLiveSync {
                 currentDate = tick
+                previewDate = tick
                 selectedHourFloat = EphemerisEngine.currentHourFloat(for: tick)
             }
         }

@@ -39,6 +39,9 @@ public class PlannerSharedState: ObservableObject {
     @Published public var isDistanceLockedToCalculator: Bool = false
     @Published public var centerTrigger: CLLocationCoordinate2D? = nil
 
+    // 플래너 추천 일시 (AR 뷰파인더 연동용)
+    @Published public var plannedDate: Date? = nil
+
     public var calculatorRequiredDistance: Double {
         OpticsCalculator.calculateRequiredDistance(
             subjectHeightMeters: Double(subjectHeight),
@@ -1837,6 +1840,7 @@ public struct ShotPlannerView: View {
                             if let prevDay = cal.date(byAdding: .day, value: -1, to: now) {
                                 now = prevDay
                                 isLiveSync = false
+                                sharedState.plannedDate = prevDay
                             }
                         }) {
                             Text("◀")
@@ -1853,6 +1857,7 @@ public struct ShotPlannerView: View {
                                     let cal = EphemerisEngine.seoulCalendar
                                     now = cal.startOfDay(for: newDate)
                                     isLiveSync = false
+                                    sharedState.plannedDate = newDate
                                     selectedMarkerMessage = "📅 날짜가 변경되었습니다."
                                 }
                             ),
@@ -1867,6 +1872,7 @@ public struct ShotPlannerView: View {
                             if let nextDay = cal.date(byAdding: .day, value: 1, to: now) {
                                 now = nextDay
                                 isLiveSync = false
+                                sharedState.plannedDate = nextDay
                             }
                         }) {
                             Text("▶")
@@ -1993,6 +1999,7 @@ public struct ShotPlannerView: View {
                     now = plan.timestamp
                     selectedHourFloat = EphemerisEngine.currentHourFloat(for: plan.timestamp)
                     isLiveSync = false
+                    sharedState.plannedDate = plan.timestamp
                     activePlanName = plan.name
                     sharedState.centerTrigger = CLLocationCoordinate2D(latitude: plan.cameraPoint.latitudeDeg, longitude: plan.cameraPoint.longitudeDeg)
                     showSavedPlansSheet = false
@@ -2014,6 +2021,7 @@ public struct ShotPlannerView: View {
                     now = event.date
                     selectedHourFloat = EphemerisEngine.currentHourFloat(for: event.date)
                     isLiveSync = false
+                    sharedState.plannedDate = event.date
                     showSearchSheet = false
                     let df = DateFormatter()
                     df.dateFormat = "M/d HH:mm"
@@ -2045,6 +2053,7 @@ public struct ShotPlannerView: View {
                     now = opp.date
                     selectedHourFloat = EphemerisEngine.currentHourFloat(for: opp.date)
                     isLiveSync = false
+                    sharedState.plannedDate = opp.date
                     let df = DateFormatter()
                     df.locale = Locale(identifier: "ko_KR")
                     df.timeZone = EphemerisEngine.seoulCalendar.timeZone

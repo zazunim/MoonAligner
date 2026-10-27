@@ -9,6 +9,9 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.app.DatePickerDialog
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -174,23 +177,36 @@ fun ArTrackerScreen(sharedState: PlannerSharedState) {
         mutableStateOf(if (sharedState.celestialTarget == CelestialTargetType.SUN) ArTargetMode.SUN else ArTargetMode.MOON)
     }
     var today by remember { mutableStateOf(LocalDate.now(seoulZone)) }
+    var previewDate by remember { mutableStateOf(LocalDate.now(seoulZone)) }
     var now by remember { mutableStateOf(Instant.now()) }
     var isLiveSync by remember { mutableStateOf(true) }
     val nowTime = remember { LocalTime.now(seoulZone) }
     var selectedHourFloat by remember { mutableFloatStateOf(nowTime.hour + nowTime.minute / 60f + nowTime.second / 3600f) }
     var showTimeSlider by remember { mutableStateOf(false) }
 
+    // 플래너 추천 일시가 설정되어 있으면 AR 진입 시 자동 연동
+    LaunchedEffect(Unit) {
+        sharedState.plannedInstant?.let { planned ->
+            val zdt = planned.atZone(seoulZone)
+            previewDate = zdt.toLocalDate()
+            val lt = zdt.toLocalTime()
+            selectedHourFloat = lt.hour + lt.minute / 60f + lt.second / 3600f
+            isLiveSync = false
+        }
+    }
+
     LaunchedEffect(isLiveSync) {
         while (isLiveSync) {
             now = Instant.now()
             today = LocalDate.now(seoulZone)
+            previewDate = today
             val lt = LocalTime.now(seoulZone)
             selectedHourFloat = lt.hour + lt.minute / 60f + lt.second / 3600f
             delay(1000L)
         }
     }
 
-    val effectiveInstant = remember(isLiveSync, now, today, selectedHourFloat) {
+    val effectiveInstant = remember(isLiveSync, now, previewDate, selectedHourFloat) {
         if (isLiveSync) {
             now
         } else {
@@ -198,7 +214,7 @@ fun ArTrackerScreen(sharedState: PlannerSharedState) {
             val h = totalSec / 3600
             val m = (totalSec % 3600) / 60
             val s = totalSec % 60
-            ZonedDateTime.of(today, LocalTime.of(h, m, s), seoulZone).toInstant()
+            ZonedDateTime.of(previewDate, LocalTime.of(h, m, s), seoulZone).toInstant()
         }
     }
 
@@ -210,13 +226,43 @@ fun ArTrackerScreen(sharedState: PlannerSharedState) {
     }
 
     // 24시간 천체 궤적 사전 계산
-    val hourlyTracks = remember(today, userLat, userLon) {
+    val activeTrackDate = if (isLiveSync) today else previewDate
+    val hourlyTracks = remember(activeTrackDate, userLat, userLon) {
         (0..24).map { h ->
-            val inst = ZonedDateTime.of(today, LocalTime.of(h % 24, 0), seoulZone).toInstant()
+            val inst = ZonedDateTime.of(activeTrackDate, LocalTime.of(h % 24, 0), seoulZone).toInstant()
             val s = EphemerisEngine.calculateSun(inst, userLat, userLon)
             val m = EphemerisEngine.calculateMoon(inst, userLat, userLon)
             Triple(h, s, m)
         }
+    }
+
+    val relativeDayText = remember(today, previewDate) {
+        val days = ChronoUnit.DAYS.between(today, previewDate)
+        when {
+            days == 0L -> "오늘"
+            days == 1L -> "내일 D+1"
+            days > 1L -> "D+${days}일"
+            else -> "D${days}일"
+        }
+    }
+    val formattedPreviewDate = remember(previewDate) {
+        previewDate.format(DateTimeFormatter.ofPattern("M/d (E)", java.util.Locale.KOREAN))
+    }
+    val totalMinutes = (selectedHourFloat * 60f).roundToInt().coerceIn(0, 1439)
+    val formattedTimeText = String.format("%02d:%02d", totalMinutes / 60, totalMinutes % 60)
+
+    val openPreviewDatePicker = {
+        val dpd = DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                previewDate = LocalDate.of(year, month + 1, dayOfMonth)
+                isLiveSync = false
+            },
+            previewDate.year,
+            previewDate.monthValue - 1,
+            previewDate.dayOfMonth
+        )
+        dpd.show()
     }
 
     // 각거리 계산
@@ -641,7 +687,7 @@ fun ArTrackerScreen(sharedState: PlannerSharedState) {
                         modifier = Modifier.clickable { showTimeSlider = !showTimeSlider }
                     ) {
                         Text(
-                            text = if (isLiveSync) "⏱️ 실시간" else "%02d:%02d".format(selectedHourFloat.toInt(), ((selectedHourFloat % 1f) * 60f).toInt()),
+                            text = if (isLiveSync) "⏱️ 실시간" else "$formattedTimeText ($relativeDayText)",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isLiveSync) MoonGlow else NightSkyBackground,
@@ -651,46 +697,147 @@ fun ArTrackerScreen(sharedState: PlannerSharedState) {
                 }
             }
 
-            // (C) 시간 스크러빙 슬라이더 (옵션)
+            // (C) 다일간 날짜 네비게이션 & 시간 스크러빙 슬라이더
             AnimatedVisibility(visible = showTimeSlider) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = CardBackground.copy(alpha = 0.95f)),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // 1. 플래너 연동 퀵 칩
+                        sharedState.plannedInstant?.let { planned ->
+                            val zdt = planned.atZone(seoulZone)
+                            val planDateStr = zdt.format(DateTimeFormatter.ofPattern("M/d HH:mm"))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = SunGold.copy(alpha = 0.18f),
+                                border = BorderStroke(1.dp, SunGold.copy(alpha = 0.6f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        previewDate = zdt.toLocalDate()
+                                        val lt = zdt.toLocalTime()
+                                        selectedHourFloat = lt.hour + lt.minute / 60f + lt.second / 3600f
+                                        isLiveSync = false
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "📋 플래너 추천 일시 ($planDateStr) 적용",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = SunGold
+                                    )
+                                }
+                            }
+                        }
+
+                        // 2. 날짜 제어 바: [ ◀ -1일 ] [ 📅 M/d (E) ] [ +1일 ▶ ] [ 🟢 실시간 ]
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("시간 프리뷰:", fontSize = 11.sp, color = TextSecondary)
-                            TextButton(
-                                onClick = {
-                                    isLiveSync = true
-                                    val lt = LocalTime.now(seoulZone)
-                                    selectedHourFloat = lt.hour + lt.minute / 60f + lt.second / 3600f
-                                },
-                                contentPadding = PaddingValues(0.dp)
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = SurfaceDark,
+                                modifier = Modifier.clickable {
+                                    previewDate = previewDate.minusDays(1)
+                                    isLiveSync = false
+                                }
                             ) {
                                 Text(
-                                    if (isLiveSync) "🟢 현재 동기화됨" else "현재 시각으로 복귀",
-                                    fontSize = 10.sp,
+                                    text = "◀ -1일",
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = SunGold
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFF1E293B),
+                                border = BorderStroke(1.dp, SunGold.copy(alpha = 0.6f)),
+                                modifier = Modifier.clickable { openPreviewDatePicker() }
+                            ) {
+                                Text(
+                                    text = "📅 $formattedPreviewDate",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SunGold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = SurfaceDark,
+                                modifier = Modifier.clickable {
+                                    previewDate = previewDate.plusDays(1)
+                                    isLiveSync = false
+                                }
+                            ) {
+                                Text(
+                                    text = "+1일 ▶",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = SurfaceDark,
+                                modifier = Modifier.clickable {
+                                    isLiveSync = true
+                                    today = LocalDate.now(seoulZone)
+                                    previewDate = today
+                                    val lt = LocalTime.now(seoulZone)
+                                    selectedHourFloat = lt.hour + lt.minute / 60f + lt.second / 3600f
+                                }
+                            ) {
+                                Text(
+                                    text = if (isLiveSync) "🟢 실시간" else "현재로 복귀",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isLiveSync) Color(0xFF22C55E) else SunGold,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
                                 )
                             }
                         }
 
-                        Slider(
-                            value = selectedHourFloat,
-                            onValueChange = {
-                                isLiveSync = false
-                                selectedHourFloat = it
-                            },
-                            valueRange = 0f..24f,
-                            colors = SliderDefaults.colors(thumbColor = SunGold, activeTrackColor = SunGold)
-                        )
+                        // 3. 시간 스크러빙 슬라이더
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("시간 프리뷰:", fontSize = 11.sp, color = TextSecondary)
+                                Text("$formattedTimeText ($relativeDayText)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SunGold)
+                            }
+
+                            Slider(
+                                value = selectedHourFloat,
+                                onValueChange = {
+                                    isLiveSync = false
+                                    selectedHourFloat = it
+                                },
+                                valueRange = 0f..24f,
+                                colors = SliderDefaults.colors(thumbColor = SunGold, activeTrackColor = SunGold)
+                            )
+                        }
                     }
                 }
             }

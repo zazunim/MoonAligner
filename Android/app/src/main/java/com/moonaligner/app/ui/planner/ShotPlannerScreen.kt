@@ -118,6 +118,9 @@ class PlannerSharedState {
     var isDistanceLockedToCalculator by mutableStateOf(false)
     var centerMapTrigger by mutableStateOf<GeoPoint?>(null)
 
+    // 플래너 추천 일시 (AR 뷰파인더 연동용)
+    var plannedInstant by mutableStateOf<Instant?>(null)
+
     val calculatorRequiredDistance: Double
         get() = OpticsCalculator.calculateRequiredDistance(
             subjectHeightMeters = subjectHeight.toDouble(),
@@ -424,6 +427,12 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
     val selectedSecond = totalSeconds % 60
     val selectedInstant = remember(today, selectedHour, selectedMinute, selectedSecond) {
         ZonedDateTime.of(today, LocalTime.of(selectedHour, selectedMinute, selectedSecond), seoulZone).toInstant()
+    }
+
+    LaunchedEffect(selectedInstant, isLiveSync) {
+        if (!isLiveSync) {
+            sharedState.plannedInstant = selectedInstant
+        }
     }
 
     // 천체 위치 (카메라 지점 기준)
@@ -1605,7 +1614,10 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     IconButton(
-                        onClick = { today = today.minusDays(1); isLiveSync = false },
+                        onClick = {
+                        today = today.minusDays(1)
+                        isLiveSync = false
+                    },
                         modifier = Modifier.size(24.dp)
                     ) {
                         Text("◀", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -1627,7 +1639,10 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                     }
 
                     IconButton(
-                        onClick = { today = today.plusDays(1); isLiveSync = false },
+                        onClick = {
+                        today = today.plusDays(1)
+                        isLiveSync = false
+                    },
                         modifier = Modifier.size(24.dp)
                     ) {
                         Text("▶", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -1731,6 +1746,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                 val lt = zdt.toLocalTime()
                 selectedHourFloat = lt.hour + lt.minute / 60f + lt.second / 3600f
                 isLiveSync = false
+                sharedState.plannedInstant = opp.timestamp
                 val timeFormatter = DateTimeFormatter.ofPattern("M/d HH:mm")
                 selectedMarkerMessage = "🏆 ${opp.grade.badgeText} 달걸이 골든타임(${zdt.format(timeFormatter)}, ${opp.skyStage.shortLabel})으로 이동되었습니다!"
             },
@@ -1842,6 +1858,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                                     val lt = zdt.toLocalTime()
                                     selectedHourFloat = lt.hour + lt.minute / 60f + lt.second / 3600f
                                     isLiveSync = false
+                                    sharedState.plannedInstant = event.timestamp
                                     showTimelineSheet = false
                                     selectedMarkerMessage = "🎯 정렬 시점(${zdt.format(DateTimeFormatter.ofPattern("M/d HH:mm"))})으로 지도가 이동되었습니다."
                                 },
@@ -2004,6 +2021,7 @@ fun ShotPlannerScreen(sharedState: PlannerSharedState) {
                                             val lt = planZdt.toLocalTime()
                                             selectedHourFloat = lt.hour + lt.minute / 60f + lt.second / 3600f
                                             isLiveSync = false
+                                            sharedState.plannedInstant = planZdt.toInstant()
                                             activePlanName = plan.name
                                             showSavedPlansSheet = false
                                             mapViewRef?.controller?.animateTo(OsmGeoPoint(plan.cameraPoint.latitudeDeg, plan.cameraPoint.longitudeDeg))
